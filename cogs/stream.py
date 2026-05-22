@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import threading
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -244,11 +243,8 @@ async def start_live_stream(
     bot.live_connections[guild.id] = conn
 
     # ── Video (H264VideoPlayer via go-live connection) ────────────────────────
-    # start_gate ensures the video player holds its first frame until the audio
-    # sender is running, so video and audio start at the same wall-clock moment.
-    start_gate = threading.Event()
     proxy_vc = _GoLiveVCProxy(conn)
-    video_player = H264VideoPlayer(url=url, voice_client=proxy_vc, fps=25.0, live=live, audio=audio, probe_size=probe_size, start_gate=start_gate)
+    video_player = H264VideoPlayer(url=url, voice_client=proxy_vc, fps=25.0, live=live, audio=audio, probe_size=probe_size)
     bot.video_players[guild.id] = video_player
     video_player.start()
     log.info("go-live video player started for '%s'", title)
@@ -267,7 +263,6 @@ async def start_live_stream(
                 )
             except TimeoutError:
                 log.error("go-live: timed out waiting for audio FIFO")
-                start_gate.set()  # unblock video player so it can exit cleanly
                 await send("go-live stream failed to start", delete_after=10)
                 return
             audio_sender = GoLiveAudioSender(
@@ -275,7 +270,6 @@ async def start_live_stream(
                 conn=conn,
             )
             audio_sender.start()
-            start_gate.set()  # audio is ready — release the first video frame
             log.info("go-live audio sender started for '%s'", title)
 
             # Block until the video player thread exits (stream ends or is stopped)

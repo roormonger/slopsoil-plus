@@ -657,7 +657,6 @@ class H264VideoPlayer(threading.Thread):
         live: bool | None = True,
         audio: bool = True,
         probe_size: int = 2_000_000,
-        start_gate: threading.Event | None = None,
     ) -> None:
         super().__init__(name="H264VideoPlayer", daemon=True)
         self._url = url
@@ -669,7 +668,6 @@ class H264VideoPlayer(threading.Thread):
         self._live = live
         self._audio = audio
         self._probe_size = probe_size
-        self._start_gate = start_gate
         self._seq: int = 0
         self._ts: int = 0
         self._ts_inc: int = round(_CLOCK / fps)
@@ -801,8 +799,6 @@ class H264VideoPlayer(threading.Thread):
             "-reconnect",
             "1",
             "-reconnect_streamed",
-            "1",
-            "-reconnect_at_eof",
             "1",
             "-reconnect_delay_max",
             "5",
@@ -975,9 +971,6 @@ class H264VideoPlayer(threading.Thread):
             nonlocal _t0, _n
             if not f:
                 return False
-            if self._start_gate is not None:
-                self._start_gate.wait()
-                self._start_gate = None
             if _t0 is None:
                 _t0 = time.monotonic()
             self._send_frame(f)
