@@ -366,16 +366,31 @@ class TV(commands.Cog):
             await ctx.send("no channels found")
             return
 
+        _MSG_LIMIT = 4
+        msgs_sent = 0
         chunk: list[str] = []
         chunk_chars = 0
         for line in lines:
             if chunk_chars + len(line) + 1 > 1800:
+                if msgs_sent >= _MSG_LIMIT:
+                    await ctx.send(
+                        "the channel list is too long to display here"
+                        " — view it directly in your TVheadend or IPTV app"
+                    )
+                    return
                 await ctx.send("```\n" + "\n".join(chunk) + "\n```")
+                msgs_sent += 1
                 chunk = []
                 chunk_chars = 0
             chunk.append(line)
             chunk_chars += len(line) + 1
         if chunk:
+            if msgs_sent >= _MSG_LIMIT:
+                await ctx.send(
+                    "the channel list is too long to display here"
+                    " — view it directly in your TVheadend or IPTV app"
+                )
+                return
             await ctx.send("```\n" + "\n".join(chunk) + "\n```")
 
     @commands.command()
