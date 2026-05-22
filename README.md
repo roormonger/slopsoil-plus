@@ -149,7 +149,7 @@ The bot detects available encoders at startup and falls back to `libopenh264` (s
 | `!join` | Join your current voice channel |
 | `!leave` | Disconnect from voice |
 | `!stop` | Stop the current stream |
-| `!channels` | List all channels (TVheadend + IPTV) with now-playing info |
+| `!channels` | List all channels (TVheadend + IPTV) with now-playing info (paginated) |
 | `!play <name or #>` | Stream a TVheadend or IPTV channel into voice |
 | `!search <title>` | Find a show in the TV guide; plays now or schedules |
 | `!add-source <name> <url>` | Add an IPTV M3U playlist source |
@@ -160,7 +160,7 @@ The bot detects available encoders at startup and falls back to `libopenh264` (s
 ### TVheadend streaming
 
 ```
-!channels           ← lists TVheadend and IPTV channels with what's on now
+!channels           ← lists TVheadend and IPTV channels with what's on now (paginated)
 !play BBC One       ← match by name (case-insensitive substring)
 !play 1             ← match by channel number
 !stop

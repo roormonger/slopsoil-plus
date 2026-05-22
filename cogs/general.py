@@ -32,7 +32,7 @@ class General(commands.Cog):
             lines += [
                 "",
                 "**TV (TVheadend)**",
-                "  `!channels` — list all channels (TVheadend + IPTV) with now-playing info",
+                "  `!channels` — list all channels (TVheadend + IPTV) with now-playing info (paginated)",
                 "  `!play <number or name>` — stream a TVheadend or IPTV channel into voice",
                 "  `!search <show title>` — find a show in the EPG; plays now or schedules",
             ]

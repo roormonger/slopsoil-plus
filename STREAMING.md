@@ -4,7 +4,7 @@
 
 All streams use the same single-FFmpeg-process pipeline defined in `cogs/stream.py`:
 
-- **Video** — `H264VideoPlayer` runs in a background thread. For TVheadend, FFmpeg transcodes MPEG-2 to H.264 and forces a keyframe every 25 frames (1 second at 25 fps). For IPTV, FFmpeg copies the existing H.264 bitstream directly (`-c:v copy`) with no re-encode. In both cases raw Annex B is written to stdout, and a wall-clock pacing loop sends frames at exactly the configured FPS.
+- **Video** — `H264VideoPlayer` runs in a background thread. FFmpeg transcodes the source to H.264 and forces a keyframe every 25 frames (1 second at 25 fps) — this applies to both TVheadend (MPEG-2) and IPTV streams. Raw Annex B is written to stdout, and a wall-clock pacing loop sends frames at exactly the configured FPS.
 - **Audio** — FFmpeg writes raw S16LE PCM to a named FIFO (`/tmp/slopsoil_<ssrc>_audio.fifo`). An `_AudioPipeSource` reads 20 ms frames directly from the FIFO.
 - **A/V sync** — Both video and audio come from the same FFmpeg process: video to stdout, audio to the FIFO. Because both streams are demuxed from a single input connection they are inherently content-aligned. Audio playback begins as soon as the FIFO opens — no artificial delay is applied.
 - **Probe size** — TVheadend uses a 2 MB FFmpeg probe window. IPTV HLS streams use a 10 MB probe to ensure audio tracks are detected before mapping is applied.
