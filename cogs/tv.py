@@ -258,7 +258,7 @@ class TV(commands.Cog):
         if not has_audio:
             log.info("IPTV stream '%s' has no audio — injecting silence", name)
 
-        await self._start_stream(send, guild, voice_channel, vc, name, stream_url, subtitle, live=True, audio=has_audio, probe_size=10_000_000)
+        await self._start_stream(send, guild, voice_channel, vc, name, stream_url, subtitle, live=True, audio=has_audio, probe_size=2_000_000)
 
     # ── Commands ──────────────────────────────────────────────────────────────
 
