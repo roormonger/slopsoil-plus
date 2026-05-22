@@ -195,7 +195,6 @@ async def start_live_stream(
     live: bool | None = True,
     audio: bool = True,
     probe_size: int = 2_000_000,
-    audio_delay_ms: int = 0,
 ) -> None:
     """
     Connect to voice and begin a go-live screenshare stream.
@@ -249,7 +248,7 @@ async def start_live_stream(
     # sender is running, so video and audio start at the same wall-clock moment.
     start_gate = threading.Event()
     proxy_vc = _GoLiveVCProxy(conn)
-    video_player = H264VideoPlayer(url=url, voice_client=proxy_vc, fps=25.0, live=live, audio=audio, probe_size=probe_size, start_gate=start_gate, audio_delay_ms=audio_delay_ms)
+    video_player = H264VideoPlayer(url=url, voice_client=proxy_vc, fps=25.0, live=live, audio=audio, probe_size=probe_size, start_gate=start_gate)
     bot.video_players[guild.id] = video_player
     video_player.start()
     log.info("go-live video player started for '%s'", title)
