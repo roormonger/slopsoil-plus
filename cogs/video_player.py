@@ -658,6 +658,7 @@ class H264VideoPlayer(threading.Thread):
         audio: bool = True,
         probe_size: int = 2_000_000,
         start_gate: threading.Event | None = None,
+        audio_delay_ms: int = 0,
     ) -> None:
         super().__init__(name="H264VideoPlayer", daemon=True)
         self._url = url
@@ -670,6 +671,7 @@ class H264VideoPlayer(threading.Thread):
         self._audio = audio
         self._probe_size = probe_size
         self._start_gate = start_gate
+        self._audio_delay_ms = audio_delay_ms
         self._seq: int = 0
         self._ts: int = 0
         self._ts_inc: int = round(_CLOCK / fps)
@@ -821,6 +823,11 @@ class H264VideoPlayer(threading.Thread):
             ),
             "-map",
             "0:a:0" if self._audio else "1:a:0",
+            *(
+                ["-af", f"adelay={self._audio_delay_ms}:all=1"]
+                if self._audio_delay_ms > 0
+                else []
+            ),
             "-c:a",
             "pcm_s16le",
             "-ar",

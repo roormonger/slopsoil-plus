@@ -187,6 +187,7 @@ class TV(commands.Cog):
         live: bool | None = True,
         audio: bool = True,
         probe_size: int = 2_000_000,
+        audio_delay_ms: int = 0,
     ) -> None:
         await start_live_stream(
             self.bot,
@@ -200,6 +201,7 @@ class TV(commands.Cog):
             live=live,
             audio=audio,
             probe_size=probe_size,
+            audio_delay_ms=audio_delay_ms,
         )
 
     async def _start_iptv_stream(
@@ -258,7 +260,7 @@ class TV(commands.Cog):
         if not has_audio:
             log.info("IPTV stream '%s' has no audio — injecting silence", name)
 
-        await self._start_stream(send, guild, voice_channel, vc, name, stream_url, subtitle, live=True, audio=has_audio, probe_size=2_000_000)
+        await self._start_stream(send, guild, voice_channel, vc, name, stream_url, subtitle, live=True, audio=has_audio, probe_size=2_000_000, audio_delay_ms=750)
 
     # ── Commands ──────────────────────────────────────────────────────────────
 
