@@ -366,32 +366,42 @@ class TV(commands.Cog):
             await ctx.send("no channels found")
             return
 
-        _MSG_LIMIT = 4
-        msgs_sent = 0
+        # Split lines into 1800-char pages.
+        pages: list[str] = []
         chunk: list[str] = []
         chunk_chars = 0
         for line in lines:
-            if chunk_chars + len(line) + 1 > 1800:
-                if msgs_sent >= _MSG_LIMIT:
-                    await ctx.send(
-                        "the channel list is too long to display here"
-                        " — view it directly in your TVheadend or IPTV app"
-                    )
-                    return
-                await ctx.send("```\n" + "\n".join(chunk) + "\n```")
-                msgs_sent += 1
+            if chunk_chars + len(line) + 1 > 1800 and chunk:
+                pages.append("```\n" + "\n".join(chunk) + "\n```")
                 chunk = []
                 chunk_chars = 0
             chunk.append(line)
             chunk_chars += len(line) + 1
         if chunk:
-            if msgs_sent >= _MSG_LIMIT:
-                await ctx.send(
-                    "the channel list is too long to display here"
-                    " — view it directly in your TVheadend or IPTV app"
-                )
+            pages.append("```\n" + "\n".join(chunk) + "\n```")
+
+        await ctx.send(pages[0])
+
+        for page in pages[1:]:
+            prompt_msg = await ctx.send(
+                f"more channels available — see next page? (yes/no)"
+            )
+
+            def is_reply(m: discord.Message) -> bool:
+                return m.author == ctx.author and m.channel == ctx.channel
+
+            try:
+                reply = await self.bot.wait_for("message", check=is_reply, timeout=30)
+            except asyncio.TimeoutError:
+                await prompt_msg.edit(content="channels: timed out waiting for reply")
                 return
-            await ctx.send("```\n" + "\n".join(chunk) + "\n```")
+
+            # Any non-yes reply (including another command) stops pagination.
+            if reply.content.strip().lower() not in ("yes", "y"):
+                await ctx.send("ok, stopping here")
+                return
+
+            await ctx.send(page)
 
     @commands.command()
     async def play(self, ctx: commands.Context, *, query: str):
