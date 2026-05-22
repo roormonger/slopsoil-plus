@@ -740,46 +740,20 @@ class H264VideoPlayer(threading.Thread):
         enc = _ENCODER
         assert enc is not None, "H264VideoPlayer started with no encoder available"
 
-        if self._live is True:
-            # TVheadend (live MPEG-2 broadcast):
-            # 2 MB probe — covers at least 1 full GOP even at low bitrates, while
-            # keeping probe time under ~3 s at typical broadcast bitrates (~5 Mbps).
-            # +discardcorrupt: bad MPEG-TS PES packets (signal dropout) are dropped
-            # before reaching the decoder so the pipeline skips to the next valid GOP
-            # much faster than when the decoder has to stumble through corrupt data.
-            probe_args = ["-probesize", str(self._probe_size), "-analyzeduration", str(self._probe_size)]
-            pre_input = enc.pre_input
-            rate_args: list[str] = []
-            fflags = "+nobuffer+discardcorrupt"
-            video_out_args = [
-                "-map", "0:v:0",
-                "-vf", enc.vf,
-                "-c:v", enc.name,
-                *enc.post_codec,
-                "-r", str(int(self._fps)),
-                "-g", str(int(self._fps)),
-                "-f", "h264",
-                "pipe:1",
-            ]
-        elif self._live is None:
-            # IPTV (live H.264 HLS/MPEG-TS):
-            # Copy the H.264 bitstream directly — no decode/re-encode.
-            # Fedora's ffmpeg-free excludes the patented libavcodec h264 decoder,
-            # leaving only libopenh264, which fails on P-frames before the first
-            # IDR at stream start.  Bitstream copy bypasses the decoder entirely.
-            # No -re: HLS segment delivery provides natural rate limiting.
-            # +discardcorrupt: drop malformed MPEG-TS packets before they cause
-            # container-level errors.
-            probe_args = ["-probesize", str(self._probe_size), "-analyzeduration", str(self._probe_size)]
-            pre_input = []
-            rate_args = []
-            fflags = "+nobuffer+discardcorrupt"
-            video_out_args = [
-                "-map", "0:v:0",
-                "-c:v", "copy",
-                "-f", "h264",
-                "pipe:1",
-            ]
+        probe_args = ["-probesize", str(self._probe_size), "-analyzeduration", str(self._probe_size)]
+        pre_input = enc.pre_input
+        rate_args: list[str] = []
+        fflags = "+discardcorrupt"
+        video_out_args = [
+            "-map", "0:v:0",
+            "-vf", enc.vf,
+            "-c:v", enc.name,
+            *enc.post_codec,
+            "-r", str(int(self._fps)),
+            "-g", str(int(self._fps)),
+            "-f", "h264",
+            "pipe:1",
+        ]
 
         return [
             "ffmpeg",
