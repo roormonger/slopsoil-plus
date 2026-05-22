@@ -5,6 +5,7 @@ import base64
 import json
 import logging
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -161,6 +162,20 @@ def _fmt_time(ts: float) -> str:
     return datetime.fromtimestamp(ts).strftime("%I:%M %p").lstrip("0")
 
 
+_DELAY_RE = re.compile(r"\bdelay=(\d+)\b", re.IGNORECASE)
+
+
+def _parse_delay(query: str) -> tuple[str, int]:
+    """Strip an optional delay=N token from a query. Returns (clean_query, delay_ms).
+
+    Falls back to 750 ms when no delay= token is present.
+    """
+    m = _DELAY_RE.search(query)
+    if m:
+        return _DELAY_RE.sub("", query).strip(), int(m.group(1))
+    return query, 750
+
+
 class TV(commands.Cog):
     def __init__(self, bot: commands.Bot, tvh: TVheadendClient):
         self.bot = cast("SlopSoil", bot)
@@ -213,6 +228,7 @@ class TV(commands.Cog):
         name: str,
         url: str,
         subtitle: str = "",
+        audio_delay_ms: int = 0,
     ) -> None:
         """Probe, validate, and start an IPTV stream.
 
@@ -260,7 +276,7 @@ class TV(commands.Cog):
         if not has_audio:
             log.info("IPTV stream '%s' has no audio — injecting silence", name)
 
-        await self._start_stream(send, guild, voice_channel, vc, name, stream_url, subtitle, live=True, audio=has_audio, probe_size=2_000_000, audio_delay_ms=2550)
+        await self._start_stream(send, guild, voice_channel, vc, name, stream_url, subtitle, live=True, audio=has_audio, probe_size=2_000_000, audio_delay_ms=audio_delay_ms)
 
     # ── Commands ──────────────────────────────────────────────────────────────
 
@@ -420,6 +436,8 @@ class TV(commands.Cog):
             guild,
         )
 
+        query, audio_delay_ms = _parse_delay(query)
+
         sm = getattr(self.bot, "source_manager", None)
         tvh_enabled = sm.tvh_enabled if sm else True
 
@@ -453,7 +471,7 @@ class TV(commands.Cog):
             source = iptv_ch.get("source", "IPTV")
             log.info("matched IPTV channel: '%s' (source: %s)", name, source)
             self._cancel_schedule(guild.id)
-            await self._start_iptv_stream(ctx.send, guild, voice_channel, vc, name, iptv_ch["stream_url"], source)
+            await self._start_iptv_stream(ctx.send, guild, voice_channel, vc, name, iptv_ch["stream_url"], source, audio_delay_ms=audio_delay_ms)
             return
 
         log.info("no channel matched query %r (searched %d TVH + IPTV)", query, len(chs))
@@ -477,6 +495,7 @@ class TV(commands.Cog):
             return
 
         assert guild is not None
+        query, audio_delay_ms = _parse_delay(query)
         log.info("EPG search for %r by %s in guild '%s'", query, ctx.author, guild)
 
         sm = getattr(self.bot, "source_manager", None)
@@ -502,7 +521,7 @@ class TV(commands.Cog):
                 source = iptv_ch.get("source", "IPTV")
                 log.info("EPG: no results; matched IPTV channel '%s' (source: %s)", name, source)
                 self._cancel_schedule(guild.id)
-                await self._start_iptv_stream(ctx.send, guild, voice_channel, vc, name, iptv_ch["stream_url"], source)
+                await self._start_iptv_stream(ctx.send, guild, voice_channel, vc, name, iptv_ch["stream_url"], source, audio_delay_ms=audio_delay_ms)
                 return
             await ctx.send(f"nothing found in the TV guide for `{query}`")
             return
