@@ -223,7 +223,7 @@ class TV(commands.Cog):
         single static frame due to out-of-display-order B-frames conflicting with
         our max_num_reorder_frames=0 SPS patch.
         """
-        await send(f"checking stream...")
+        await send(f"checking stream…")
 
         # For HLS master playlists, resolve to the variant URL first.
         # thetvapp.to-style streams declare a separate audio rendition group
@@ -260,7 +260,7 @@ class TV(commands.Cog):
         if not has_audio:
             log.info("IPTV stream '%s' has no audio — injecting silence", name)
 
-        await self._start_stream(send, guild, voice_channel, vc, name, stream_url, subtitle, live=True, audio=has_audio, probe_size=2_000_000, audio_delay_ms=2550)
+        await self._start_stream(send, guild, voice_channel, vc, name, stream_url, subtitle, live=True, audio=has_audio, probe_size=2_000_000, audio_delay_ms=750)
 
     # ── Commands ──────────────────────────────────────────────────────────────
 
