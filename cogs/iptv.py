@@ -437,6 +437,10 @@ class IPTVCog(commands.Cog, name="IPTV"):
         self.bot = cast("SlopSoil", bot)
         self.sm = source_manager
 
+    async def cog_check(self, ctx: commands.Context) -> bool:
+        allowed: set[int] = getattr(self.bot, "allowed_ids", set())
+        return not allowed or ctx.author.id in allowed
+
     @commands.command(name="add-source")
     async def add_source(self, ctx: commands.Context, name: str, *, url: str):
         """Add or update an IPTV playlist source from an M3U URL."""

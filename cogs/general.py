@@ -37,7 +37,8 @@ class General(commands.Cog):
                 "  `!search <show title>` — find a show in the EPG; plays now or schedules",
             ]
 
-        if self.bot.get_cog("IPTV"):
+        allowed: set[int] = getattr(self.bot, "allowed_ids", set())
+        if self.bot.get_cog("IPTV") and (not allowed or ctx.author.id in allowed):
             lines += [
                 "",
                 "**IPTV**",
