@@ -4,7 +4,7 @@
 
 All streams use the same single-FFmpeg-process pipeline defined in `cogs/stream.py`:
 
-- **Video** — `H264VideoPlayer` runs in a background thread. FFmpeg transcodes the source to H.264 and forces a keyframe every 25 frames (1 second at 25 fps) — this applies to both TVheadend (MPEG-2) and IPTV streams. Raw Annex B is written to stdout, and a wall-clock pacing loop sends frames at exactly the configured FPS.
+- **Video** — `H264VideoPlayer` runs in a background thread. FFmpeg transcodes the source to H.264 at 1920×1080 60 fps and forces a keyframe every 60 frames (1 second at 60 fps) — this applies to both TVheadend (MPEG-2) and IPTV streams. Raw Annex B is written to stdout, and a wall-clock pacing loop sends frames at exactly the configured FPS.
 - **Audio** — FFmpeg writes raw S16LE PCM to a named FIFO (`/tmp/slopsoil_<ssrc>_audio.fifo`). An `_AudioPipeSource` reads 20 ms frames directly from the FIFO.
 - **A/V sync** — Both video and audio come from the same FFmpeg process: video to stdout, audio to the FIFO. Because both streams are demuxed from a single input connection they are inherently content-aligned. Audio playback begins as soon as the FIFO opens — no artificial delay is applied.
 - **Probe size** — TVheadend uses a 2 MB FFmpeg probe window. IPTV HLS streams use a 10 MB probe to ensure audio tracks are detected before mapping is applied.
@@ -64,4 +64,4 @@ DAVE is mandatory — setting `max_dave_protocol_version: 0` to bypass it causes
 
 **Single-process FIFO sync** — A single FFmpeg process reads the source URL once and demuxes both streams: H.264 video goes to stdout (consumed by `H264VideoPlayer`) and raw PCM audio goes to a named FIFO (consumed by `_AudioPipeSource`). Because both streams come from the same input connection they are inherently content-aligned — there is no risk of two independent HTTP connections landing at different positions in the stream. Audio playback begins as soon as the FIFO opens.
 
-**Wall-clock frame pacing** — After sending each video frame, `H264VideoPlayer` sleeps until the next frame deadline calculated from `time.monotonic()`. This prevents the video thread from sending faster than real-time if the encoder is fast, and prevents it from accumulating lag if the encoder is slow — it just catches up by not sleeping. The sleep uses `threading.Event.wait()` so a `!stop` command interrupts it immediately.
+**Wall-clock frame pacing** — After sending each video frame, `H264VideoPlayer` sleeps until the next frame deadline calculated from `time.monotonic()`. This prevents the video thread from sending faster than real-time if the encoder is fast, and prevents it from accumulating lag if the encoder is slow — it just catches up by not sleeping. At 60 fps each frame budget is ~16.7 ms. The sleep uses `threading.Event.wait()` so a `!stop` command interrupts it immediately.

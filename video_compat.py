@@ -95,11 +95,11 @@ async def _patched_client_connect(self) -> None:
                     "quality": 100,
                     "rtx_ssrc": rtx_ssrc,
                     "max_bitrate": 10_000_000,
-                    "max_framerate": 30,
+                    "max_framerate": 60,
                     "max_resolution": {
                         "type": "fixed",
-                        "width": 1280,
-                        "height": 720,
+                        "width": 1920,
+                        "height": 1080,
                     },
                 }
             ],
