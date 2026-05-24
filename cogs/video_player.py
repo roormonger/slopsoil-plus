@@ -744,6 +744,12 @@ class H264VideoPlayer(threading.Thread):
         pre_input = enc.pre_input
         rate_args: list[str] = []
         fflags = "+discardcorrupt"
+        # -reconnect flags are HTTP-protocol-specific; FFmpeg rejects them for local files.
+        reconnect_args = (
+            ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
+            if self._url.startswith(("http://", "https://", "rtmp://", "rtsp://"))
+            else []
+        )
         video_out_args = [
             "-map", "0:v:0",
             "-vf", enc.vf,
@@ -770,12 +776,7 @@ class H264VideoPlayer(threading.Thread):
             "-fflags",
             fflags,
             *rate_args,
-            "-reconnect",
-            "1",
-            "-reconnect_streamed",
-            "1",
-            "-reconnect_delay_max",
-            "5",
+            *reconnect_args,
             "-i",
             self._url,
             *video_out_args,
