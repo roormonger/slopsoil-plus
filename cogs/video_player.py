@@ -929,7 +929,7 @@ class H264VideoPlayer(threading.Thread):
         ).start()
         assert self._proc.stdout is not None
 
-        buf = b""
+        buf = bytearray()
         frame: list[bytes] = []  # NAL units for the current frame
         pending: list[bytes] = []  # SPS/PPS/SEI to prepend to the next slice
 
@@ -966,7 +966,7 @@ class H264VideoPlayer(threading.Thread):
 
             # Split on start codes.  All parts except the last are complete.
             # The last part may be cut off mid-NAL — keep it for next iteration.
-            parts = _START_RE.split(buf)
+            parts = _START_RE.split(bytes(buf))
             _stop = False
             for raw in parts[:-1]:
                 nal = raw.rstrip(b"\x00")
@@ -997,11 +997,11 @@ class H264VideoPlayer(threading.Thread):
 
             if _stop:
                 break
-            buf = parts[-1]  # incomplete tail, carry forward
+            buf = bytearray(parts[-1])  # incomplete tail, carry forward
 
         # Flush any remaining NAL units
         if buf:
-            nal = buf.rstrip(b"\x00")
+            nal = bytes(buf).rstrip(b"\x00")
             if nal:
                 if _nal_type(nal) == 7:
                     nal = rewrite_sps_vui(nal)
