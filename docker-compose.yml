@@ -2,13 +2,22 @@ services:
   slopsoil:
     build: .
     restart: unless-stopped
-    env_file: .env
+    ports:
+      - "3000:3000"
 
-    # Persist IPTV source list across container restarts.
+    # Load environment variables from .env file
+    env_file:
+      - .env
+
+    # Persist IPTV source list and SQLite database across container restarts.
     volumes:
       - slopsoil-data:/root/.local/share/slopsoil
-    devices:
-      - /dev/dri:/dev/dri
+      - ./data:/app/data
+    environment:
+      - PORT=3000
+    # GPU device for hardware acceleration (Linux only)
+    # devices:
+    #   - /dev/dri:/dev/dri
 
 volumes:
   slopsoil-data:

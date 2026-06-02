@@ -690,8 +690,21 @@ class TV(commands.Cog):
             )
             return
 
+        # Check bookmarks as last resort
+        from backend.database import get_enabled_bookmarks
+        bookmarks = get_enabled_bookmarks()
+        q = query.lower()
+        for bm in bookmarks:
+            if q in bm["name"].lower():
+                log.info("matched bookmark: '%s' (%s)", bm["name"], bm["url"])
+                self._cancel_schedule(guild.id)
+                await self._start_iptv_stream(
+                    ctx.send, guild, voice_channel, vc, bm["name"], bm["url"], "Bookmark"
+                )
+                return
+
         log.info(
-            "no channel matched query %r (searched %d TVH + IPTV)", query, len(chs)
+            "no channel matched query %r (searched %d TVH + IPTV + bookmarks)", query, len(chs)
         )
         await ctx.send(
             f"channel not found: `{query}`"

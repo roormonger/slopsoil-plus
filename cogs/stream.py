@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
@@ -117,6 +118,14 @@ async def start_stream(
     log.info("starting stream: %s → %s", label, _safe_url(url))
     await send(f"▶ {label}")
 
+    # Track what's playing
+    bot.now_playing[guild.id] = {
+        "title": title,
+        "url": url,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "guild_name": guild.name,
+    }
+
     # ── Video + audio (single FFmpeg process) ─────────────────────────────────
     video_player: H264VideoPlayer | None = None
     if _VIDEO_ENCODER is not None:
@@ -182,6 +191,7 @@ async def start_stream(
             vp = bot.video_players.pop(guild.id, None)
             if vp is not None:
                 vp.stop()
+            bot.now_playing.pop(guild.id, None)  # Clear now playing
             log.debug("stream cleanup done for guild %s", guild.id)
 
     audio_task = asyncio.create_task(_run_audio())
@@ -236,6 +246,14 @@ async def start_live_stream(
     label = f"**{title}**" + (f" ({subtitle})" if subtitle else "")
     log.info("starting go-live stream: %s → %s", label, _safe_url(url))
     await send(f"📺 {label} (go-live)")
+
+    # Track what's playing
+    bot.now_playing[guild.id] = {
+        "title": title,
+        "url": url,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "guild_name": guild.name,
+    }
 
     # ── Go-live connection ────────────────────────────────────────────────────
     conn = GoLiveConnection(bot, guild.id, voice_channel.id, vc)
@@ -306,6 +324,7 @@ async def start_live_stream(
                     await live_conn.disconnect()
                 except Exception:
                     pass
+            bot.now_playing.pop(guild.id, None)  # Clear now playing
             log.debug("go-live cleanup done for guild %s", guild.id)
 
     live_task = asyncio.create_task(_run_live())

@@ -47,13 +47,19 @@ def _load_allowed_ids() -> set[int]:
 
 
 class SlopSoil(commands.Bot):
-    def __init__(self, allowed_ids: set[int]):
-        super().__init__(command_prefix="!", help_command=None)
+    def __init__(self, allowed_ids: set[int], command_prefix: str = "!"):
+        super().__init__(command_prefix=command_prefix, help_command=None)
         self.allowed_ids = allowed_ids
         self.stream_tasks: dict[int, asyncio.Task] = {}
         self.video_players: dict[int, H264VideoPlayer] = {}
         self.live_connections: dict[int, GoLiveConnection] = {}
         self.source_manager: SourceManager | None = None
+        self.now_playing: dict[int, dict] = {}  # guild_id -> {title, url, started_at, guild_name}
+        # Music playback state (separate from video streaming)
+        self.music_queues: dict[int, list] = {}  # guild_id -> list[MusicTrack]
+        self.music_history: dict[int, list] = {}  # guild_id -> list[MusicTrack]
+        self.music_current: dict[int, object] = {}  # guild_id -> MusicTrack
+        self.music_volumes: dict[int, float] = {}  # guild_id -> 0.0-2.0
 
     async def setup_hook(self):
         async def has_any_role(ctx: commands.Context) -> bool:
@@ -76,6 +82,9 @@ class SlopSoil(commands.Bot):
             log.info("loaded extension: cogs.jellyfin (Jellyfin: %s)", jf_url)
         else:
             log.warning("JELLYFIN_URL/API_KEY not set — !media will report unconfigured")
+
+        await self.load_extension("cogs.music")
+        log.info("loaded extension: cogs.music")
 
     async def close(self) -> None:
         # Cancel active stream tasks and terminate FFmpeg processes before the

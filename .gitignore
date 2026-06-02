@@ -1,13 +1,27 @@
 sources.json
 slopsoil
+/data/
 vendor/
+node_modules/
+frontend/dist/
 .env
+.devcontainer/
 .agents/
 .claude/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
 *$py.class
+*.pyo
+
+# Build / cache directories
+build/
+dist/
+*.egg-info/
+.eggs/
+.cache/
+.parcel-cache/
+.vite/
 
 # C extensions
 *.so
