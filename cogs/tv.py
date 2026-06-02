@@ -31,13 +31,17 @@ from permissions import Role, require_role
 _epg_cache: dict[str, tuple[float, dict[str, str]]] = {}
 
 
+# yt-dlp format selector (env override). Default keeps original behavior.
+_YTDLP_FORMAT: str = os.getenv("YTDLP_FORMAT", "bestvideo+bestaudio/best")
+
+
 async def _yt_download(url: str, out_dir: str) -> tuple[str, str]:
     """Download url into out_dir via yt-dlp. Returns (file_path, title)."""
     import yt_dlp
 
     def _run() -> tuple[str, str]:
         opts = {
-            "format": "bestvideo+bestaudio/best",
+            "format": _YTDLP_FORMAT,
             "outtmpl": os.path.join(out_dir, "%(id)s.%(ext)s"),
             "merge_output_format": "mp4",
             "quiet": True,

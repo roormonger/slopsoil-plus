@@ -11,6 +11,13 @@ from typing import Any
 # Import encryption utilities
 from backend.encryption import encrypt_value, decrypt_value, is_encrypted
 
+# Capture which environment variables were originally set at startup
+# (before bot_runner or other code modifies os.environ)
+_ORIGINAL_ENV_VARS: set[str] = set()
+for _key, _value in os.environ.items():
+    # Only track env vars that correspond to our settings (uppercase versions)
+    _ORIGINAL_ENV_VARS.add(_key.upper())
+
 # Ensure data directory exists
 DATA_DIR = Path("./data")
 DATA_DIR.mkdir(exist_ok=True)
@@ -37,6 +44,13 @@ DEFAULT_SETTINGS = {
     "jellyfin_url": "",
     "jellyfin_api_key": "",
     "timezone": "",
+    "ytdlp_format": "bestvideo+bestaudio/best",
+    "stream_quality": "1080p",
+    "stream_resolution": "1920:1080",
+    "stream_fps": "60",
+    "stream_video_bitrate": "6000k",
+    "stream_packet_pace": "0",
+    "stream_av_sync_ms": "0",
     "_config_modified_at": "",  # Internal timestamp for reload notifications
 }
 
@@ -150,6 +164,27 @@ def get_setting(key: str) -> str:
         return value
 
 
+def get_setting_with_env_fallback(key: str) -> tuple[str, bool]:
+    """Get a setting value, checking env var first (takes precedence over DB).
+    
+    Returns tuple of (value: str, from_env: bool)
+    """
+    # Check environment variable first (uppercase version of key)
+    # Only consider env vars that were originally set at startup, not ones
+    # set at runtime by bot_runner for legacy compatibility
+    env_key = key.upper()
+    from_env = env_key in _ORIGINAL_ENV_VARS
+    env_value = os.environ.get(env_key) if from_env else None
+    
+    if from_env and env_value is not None:
+        # Env var exists and was originally set - use it (env vars are never encrypted)
+        return (env_value, True)
+    
+    # Fall back to database value
+    db_value = get_setting(key)
+    return (db_value, False)
+
+
 def set_setting(key: str, value: str) -> None:
     """Set a setting value. Automatically encrypts sensitive fields."""
     # Encrypt if this is a sensitive field and value is not empty
@@ -203,6 +238,48 @@ def get_all_settings() -> dict[str, str]:
             settings[key] = value
         
         return settings
+
+
+def get_all_settings_with_env() -> dict[str, dict[str, Any]]:
+    """Get all settings as a dictionary with env var source info.
+    
+    Returns dict where each value is {value: str, from_env: bool}
+    """
+    # Get all settings from DB
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT key, value FROM settings")
+        rows = cursor.fetchall()
+        
+        db_settings = {}
+        for row in rows:
+            key = row["key"]
+            value = row["value"]
+            
+            # Decrypt if this is a sensitive field and appears encrypted
+            if key in ENCRYPTED_SETTINGS_KEYS and value and is_encrypted(value):
+                try:
+                    value = decrypt_value(value) or ""
+                except Exception:
+                    pass
+            
+            db_settings[key] = value
+    
+    # Apply env var overrides (only from originally set env vars, not runtime modifications)
+    result: dict[str, dict[str, Any]] = {}
+    for key, db_value in db_settings.items():
+        env_key = key.upper()
+        # Check if this env var was originally set at startup (before bot_runner modified os.environ)
+        from_env = env_key in _ORIGINAL_ENV_VARS
+        env_value = os.environ.get(env_key) if from_env else None
+        
+        if from_env and env_value is not None:
+            # Env var takes precedence
+            result[key] = {"value": env_value, "from_env": True}
+        else:
+            result[key] = {"value": db_value, "from_env": False}
+    
+    return result
 
 
 def is_config_modified() -> tuple[bool, str]:

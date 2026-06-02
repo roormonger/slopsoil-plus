@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from backend.database import (
     get_all_settings,
+    get_all_settings_with_env,
     mark_config_modified,
     set_setting,
     create_user,
@@ -48,8 +49,13 @@ log = logging.getLogger(__name__)
 
 # Request/Response models
 
+class SettingInfo(BaseModel):
+    value: str
+    from_env: bool
+
+
 class ConfigResponse(BaseModel):
-    settings: dict[str, str]
+    settings: dict[str, SettingInfo]
     users: list[dict[str, Any]]
 
 
@@ -62,6 +68,13 @@ class ConfigUpdateRequest(BaseModel):
     jellyfin_url: str | None = None
     jellyfin_api_key: str | None = None
     timezone: str | None = None
+    ytdlp_format: str | None = None
+    stream_quality: str | None = None
+    stream_resolution: str | None = None
+    stream_fps: int | None = None
+    stream_video_bitrate: str | None = None
+    stream_packet_pace: float | None = None
+    stream_av_sync_ms: int | None = None
 
 
 # User system models
@@ -141,7 +154,7 @@ class PendingReloadResponse(BaseModel):
 @router.get("/api/config", response_model=ConfigResponse)
 async def get_config() -> ConfigResponse:
     """Get current configuration and users."""
-    settings = get_all_settings()
+    settings = get_all_settings_with_env()
     users = get_all_users()
     return ConfigResponse(settings=settings, users=users)
 
@@ -158,11 +171,24 @@ async def update_config(request: ConfigUpdateRequest) -> dict[str, str]:
         "jellyfin_url": request.jellyfin_url,
         "jellyfin_api_key": request.jellyfin_api_key,
         "timezone": request.timezone,
+        "ytdlp_format": request.ytdlp_format,
+        "stream_quality": request.stream_quality,
+        "stream_resolution": request.stream_resolution,
+        "stream_fps": str(request.stream_fps) if request.stream_fps is not None else None,
+        "stream_video_bitrate": request.stream_video_bitrate,
+        "stream_packet_pace": str(request.stream_packet_pace) if request.stream_packet_pace is not None else None,
+        "stream_av_sync_ms": str(request.stream_av_sync_ms) if request.stream_av_sync_ms is not None else None,
     }
 
     updated = []
+    skipped_env = []
     for key, value in settings_map.items():
         if value is not None:
+            # Check if this setting is controlled by env var
+            env_key = key.upper()
+            if os.environ.get(env_key) is not None:
+                skipped_env.append(key)
+                continue
             set_setting(key, value)
             updated.append(key)
 
@@ -170,7 +196,10 @@ async def update_config(request: ConfigUpdateRequest) -> dict[str, str]:
     if updated:
         mark_config_modified()
 
-    return {"message": f"Updated {len(updated)} settings", "updated": ", ".join(updated)}
+    message = f"Updated {len(updated)} settings"
+    if skipped_env:
+        message += f" (skipped {len(skipped_env)} env-controlled: {', '.join(skipped_env)})"
+    return {"message": message, "updated": ", ".join(updated), "skipped": ", ".join(skipped_env)}
 
 
 

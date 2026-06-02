@@ -44,3 +44,28 @@ async def resolve_voice(
     )
     voice_client = cast(discord.VoiceClient | None, guild.voice_client)
     return guild, voice_channel, voice_client
+
+
+async def ensure_voice(
+    voice_channel: discord.VoiceChannel | discord.StageChannel,
+    vc: discord.VoiceClient | None,
+) -> discord.VoiceClient:
+    """
+    Ensure the bot is connected to *voice_channel*, reconnecting if necessary.
+
+    A stale voice client (one that thinks it's connected but isn't) is detected
+    by checking ``guild.me.voice`` against the client's own channel. If they
+    disagree, or if the client is None/disconnected, a fresh connection is made.
+    """
+    guild = voice_channel.guild
+
+    if vc and vc.is_connected() and guild.me.voice and guild.me.voice.channel == voice_channel:
+        return vc
+
+    if vc:
+        try:
+            await vc.disconnect(force=True)
+        except Exception:
+            pass
+
+    return await voice_channel.connect(self_deaf=True)

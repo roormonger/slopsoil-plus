@@ -393,6 +393,38 @@ def _test_encoder(name: str, pre_input: list[str]) -> bool:
         return False
 
 
+# ── Stream quality preset configuration (env override) ─────────────────────────
+# Preset name -> (resolution, fps, bitrate, buf_size)
+_STREAM_QUALITY_PRESETS: dict[str, tuple[str, int, str, str]] = {
+    "720p": ("1280:720", 30, "4500k", "9000k"),
+    "1080p": ("1920:1080", 60, "6000k", "12000k"),
+    "4k": ("3840:2160", 60, "20000k", "40000k"),
+}
+
+_STREAM_QUALITY: str = os.getenv("STREAM_QUALITY", "1080p").lower()
+if _STREAM_QUALITY not in _STREAM_QUALITY_PRESETS:
+    log.warning("unknown STREAM_QUALITY=%r, using 1080p", _STREAM_QUALITY)
+    _STREAM_QUALITY = "1080p"
+
+# Per-axis env overrides take precedence over the preset
+_RESOLUTION: str = os.getenv("STREAM_RESOLUTION", _STREAM_QUALITY_PRESETS[_STREAM_QUALITY][0])
+_FPS: int = int(os.getenv("STREAM_FPS", str(_STREAM_QUALITY_PRESETS[_STREAM_QUALITY][1])))
+_BITRATE: str = os.getenv("STREAM_VIDEO_BITRATE", _STREAM_QUALITY_PRESETS[_STREAM_QUALITY][2])
+_BUF_SIZE: str = os.getenv("STREAM_BUF_SIZE", _STREAM_QUALITY_PRESETS[_STREAM_QUALITY][3])
+
+log.info("stream quality: %s (%s @ %dfps, %s CBR)", _STREAM_QUALITY, _RESOLUTION, _FPS, _BITRATE)
+
+# RTP packet pacing: space packets across this fraction of the frame interval (0.0 = off)
+_PACKET_PACE: float = max(0.0, min(0.95, float(os.getenv("STREAM_PACKET_PACE", "0.0"))))
+if _PACKET_PACE > 0:
+    log.info("RTP packet pacing: %.2f%% of frame interval", _PACKET_PACE * 100)
+
+# A/V sync offset in ms (positive = audio ahead, negative = audio behind)
+_AV_SYNC_MS: int = max(-5000, min(5000, int(os.getenv("STREAM_AV_SYNC_MS", "0"))))
+if _AV_SYNC_MS != 0:
+    log.info("A/V sync offset: %+d ms (audio %s)", _AV_SYNC_MS, "ahead" if _AV_SYNC_MS > 0 else "behind")
+
+
 def _detect_encoder() -> _EncoderConfig | None:
     """Pick the best available H.264 encoder. Returns None if nothing works."""
     try:
@@ -426,15 +458,15 @@ def _detect_encoder() -> _EncoderConfig | None:
                 "-level:v",
                 "4.2",
                 "-x264-params",
-                "aud=1",
+                f"aud=1:fps={_FPS}",
                 "-b:v",
-                "6000k",
+                _BITRATE,
                 "-maxrate",
-                "6000k",
+                _BITRATE,
                 "-bufsize",
-                "12000k",
+                _BUF_SIZE,
             ],
-            vf="scale=1920:1080",
+            vf=f"scale={_RESOLUTION}",
         )
 
     if "h264_nvenc" in available and _test_encoder("h264_nvenc", []):
@@ -451,16 +483,18 @@ def _detect_encoder() -> _EncoderConfig | None:
                 "high",
                 "-level:v",
                 "4.2",
+                "-rc",
+                "cbr",
                 "-aud",
                 "1",
                 "-b:v",
-                "6000k",
+                _BITRATE,
                 "-maxrate",
-                "6000k",
+                _BITRATE,
                 "-bufsize",
-                "12000k",
+                _BUF_SIZE,
             ],
-            vf="scale=1920:1080",
+            vf=f"scale={_RESOLUTION}",
         )
 
     if "h264_vaapi" in available and _test_encoder("h264_vaapi", vaapi_pre):
@@ -478,9 +512,9 @@ def _detect_encoder() -> _EncoderConfig | None:
                 "-aud",
                 "1",
                 "-b:v",
-                "6000k",
+                _BITRATE,
             ],
-            vf="format=nv12,hwupload,scale_vaapi=1920:1080",
+            vf=f"format=nv12,hwupload,scale_vaapi={_RESOLUTION}",
         )
 
     if "libopenh264" in available and _test_encoder("libopenh264", []):
@@ -494,13 +528,13 @@ def _detect_encoder() -> _EncoderConfig | None:
                 "-level:v",
                 "4.2",
                 "-b:v",
-                "6000k",
+                _BITRATE,
                 "-maxrate",
-                "6000k",
+                _BITRATE,
                 "-bufsize",
-                "12000k",
+                _BUF_SIZE,
             ],
-            vf="scale=1920:1080",
+            vf=f"scale={_RESOLUTION}",
         )
 
     log.warning(
@@ -800,6 +834,12 @@ class H264VideoPlayer(threading.Thread):
                 if self._audio
                 else ["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"]
             ),
+            # A/V sync offset: positive advances audio (fixes "audio behind")
+            *(
+                ["-itsoffset", f"{_AV_SYNC_MS / 1000.0:.3f}"]
+                if _AV_SYNC_MS != 0
+                else []
+            ),
             "-map",
             "0:a:0" if self._audio else "1:a:0",
             "-c:a",
@@ -860,6 +900,13 @@ class H264VideoPlayer(threading.Thread):
         if not all_payloads:
             return
 
+        # RTP packet pacing: spread packets across a fraction of the frame interval
+        if _PACKET_PACE > 0 and len(all_payloads) > 1:
+            frame_interval = 1.0 / _FPS
+            pace_interval = (frame_interval * _PACKET_PACE) / (len(all_payloads) - 1)
+        else:
+            pace_interval = 0.0
+
         for i, payload in enumerate(all_payloads):
             marker = i == len(all_payloads) - 1
             hdr = _rtp_header(self._seq, self._ts, self._ssrc, marker=marker)
@@ -870,6 +917,10 @@ class H264VideoPlayer(threading.Thread):
             except OSError:
                 log.debug("Video packet dropped (seq=%d)", self._seq)
             self._seq = (self._seq + 1) & 0xFFFF
+
+            # Pace packets (except the last one)
+            if pace_interval > 0 and i < len(all_payloads) - 1:
+                time.sleep(pace_interval)
 
         self._ts = (self._ts + self._ts_inc) & 0xFFFF_FFFF
 

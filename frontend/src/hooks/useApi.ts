@@ -17,11 +17,30 @@ export function useApi() {
     }
   }, [])
 
-  const fetchConfig = useCallback(async (): Promise<{ settings: Config; users: User[] } | null> => {
+  const fetchConfig = useCallback(async (): Promise<{ settings: Config; settingsEnv: Record<string, {value: string, from_env: boolean}>; users: User[] } | null> => {
     try {
       const res = await fetch(`${API_URL}/config`)
       if (!res.ok) throw new Error('Failed to fetch config')
-      return await res.json()
+      const data = await res.json()
+      
+      // Transform settings from {key: {value, from_env}} to {key: value} for Config
+      const settings: Config = {} as Config
+      const settingsEnv: Record<string, {value: string, from_env: boolean}> = {}
+      
+      for (const [key, info] of Object.entries(data.settings)) {
+        const settingInfo = info as {value: string, from_env: boolean}
+        settingsEnv[key] = settingInfo
+        // Handle type conversion for numeric fields
+        if (key === 'stream_fps' || key === 'stream_av_sync_ms') {
+          (settings as any)[key] = parseInt(settingInfo.value) || 0
+        } else if (key === 'stream_packet_pace') {
+          (settings as any)[key] = parseFloat(settingInfo.value) || 0
+        } else {
+          (settings as any)[key] = settingInfo.value
+        }
+      }
+      
+      return { settings, settingsEnv, users: data.users }
     } catch (err) {
       showMessage(err instanceof Error ? err.message : 'Failed to load config')
       return null

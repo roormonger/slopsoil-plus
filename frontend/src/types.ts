@@ -1,3 +1,8 @@
+export interface SettingInfo {
+  value: string
+  from_env: boolean
+}
+
 export interface Config {
   discord_token: string
   command_prefix: string
@@ -7,6 +12,32 @@ export interface Config {
   jellyfin_url: string
   jellyfin_api_key: string
   timezone: string
+  ytdlp_format: string
+  stream_quality: string
+  stream_resolution: string
+  stream_fps: number
+  stream_video_bitrate: string
+  stream_packet_pace: number
+  stream_av_sync_ms: number
+}
+
+// New interface for settings with source info from API
+export interface SettingsWithEnv {
+  discord_token: SettingInfo
+  command_prefix: SettingInfo
+  tvheadend_url: SettingInfo
+  tvheadend_user: SettingInfo
+  tvheadend_pass: SettingInfo
+  jellyfin_url: SettingInfo
+  jellyfin_api_key: SettingInfo
+  timezone: SettingInfo
+  ytdlp_format: SettingInfo
+  stream_quality: SettingInfo
+  stream_resolution: SettingInfo
+  stream_fps: SettingInfo
+  stream_video_bitrate: SettingInfo
+  stream_packet_pace: SettingInfo
+  stream_av_sync_ms: SettingInfo
 }
 
 export interface User {
