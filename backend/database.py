@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import bcrypt
+from pydantic import BaseModel
 
 # Import encryption utilities
 from backend.encryption import encrypt_value, decrypt_value, is_encrypted
@@ -36,6 +37,17 @@ ENCRYPTED_USER_FIELDS = {
     "discord_id",
 }
 
+# Pydantic models for API responses
+class UserResponse(BaseModel):
+    """User response model for API."""
+    user_id: str
+    username: str
+    role: str
+    avatar: str | None = None
+    discord_id: str | None = None
+    created_at: str
+
+
 # Default settings keys to pre-seed
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt."""
@@ -45,6 +57,21 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, password_hash: str) -> bool:
     """Verify a password against a hash."""
     return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
+
+
+def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
+    """Authenticate a user with username and password.
+    
+    Returns user dict if valid, None otherwise.
+    """
+    user = get_user_by_username(username)
+    if not user:
+        return None
+    
+    if verify_password(password, user['password_hash']):
+        # Remove password_hash from response for security
+        return {k: v for k, v in user.items() if k != 'password_hash'}
+    return None
 
 
 DEFAULT_SETTINGS = {

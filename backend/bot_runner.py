@@ -256,8 +256,11 @@ def get_now_playing() -> dict[str, Any]:
     if _bot_instance is None:
         return {"streams": [], "count": 0}
 
+    # Handle case where now_playing doesn't exist or is None
+    now_playing = getattr(_bot_instance, 'now_playing', None) or {}
+
     streams = []
-    for guild_id, info in _bot_instance.now_playing.items():
+    for guild_id, info in now_playing.items():
         streams.append({
             "guild_id": guild_id,
             "guild_name": info.get("guild_name", "Unknown"),
