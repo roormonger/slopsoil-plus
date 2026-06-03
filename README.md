@@ -40,15 +40,15 @@ Features include TVheadend integration, Jellyfin integration, M3U/IPTV playlist 
 |---|---|
 | ![Channel list showing TVheadend channels with now-playing info](images/slopsoil4.png) | ![Bot streaming video in a Discord voice channel](images/slopsoil3.png) |
 
-### Web Administration (screenshots coming soon)
+### Web Administration
 
-<!-- Add these screenshots to the images/ folder: -->
-<!-- - images/screenshot-login.png - Login page -->
-<!-- - images/screenshot-dashboard.png - Main dashboard -->
-<!-- - images/screenshot-users.png - User management -->
-<!-- - images/screenshot-voice.png - Voice channel controls -->
-<!-- - images/screenshot-music.png - Music player -->
-<!-- - images/screenshot-jellyfin.png - Jellyfin browser -->
+| Login Page | Dashboard | User Management |
+|---|---|---|
+| ![Login page](images/screenshot-login.png) | ![Main dashboard](images/screenshot-dashboard.png) | ![User management](images/screenshot-users.png) |
+
+| Music Player | Jellyfin Browser |
+|---|---|
+| ![Music player](images/screenshot-music.png) | ![Jellyfin browser](images/screenshot-jellyfin.png) |
 
 ---
 
