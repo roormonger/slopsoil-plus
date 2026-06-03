@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -56,18 +56,14 @@ if FRONTEND_DIST.exists():
     async def read_index():
         return FileResponse(FRONTEND_DIST / "index.html")
     
-    # SPA fallback - serve index.html for any non-API routes
-    @app.get("/{full_path:path}")
+    # SPA fallback - serve index.html for frontend routes
+    @app.get("/{full_path:path}", response_model=None)
     async def spa_fallback(full_path: str):
-        # Don't intercept API routes
-        if full_path.startswith("api/"):
-            return {"detail": "Not Found"}, 404
-        
         # Check if it's a static file that exists
         file_path = FRONTEND_DIST / full_path
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
-        
+
         # For all other routes, serve index.html for SPA routing
         return FileResponse(FRONTEND_DIST / "index.html")
     

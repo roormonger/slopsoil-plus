@@ -11,3 +11,5 @@ uvicorn[standard]
 pydantic
 bcrypt
 cryptography
+httpx
+python-jose[cryptography]

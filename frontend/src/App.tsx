@@ -4,6 +4,8 @@ import { Loader2 } from 'lucide-react'
 import { Layout } from './components/Layout'
 import TopNavigation from './components/TopNavigation'
 import { GuildProvider } from './contexts/GuildContext'
+import { AuthProvider } from './context/AuthContext'
+import ProtectedRoute from './components/ProtectedRoute'
 import { Dashboard } from './pages/Dashboard'
 import { Users } from './pages/Users'
 import { Iptv } from './pages/Iptv'
@@ -12,11 +14,12 @@ import { Settings } from './pages/Settings'
 import { Soundboard } from './pages/Soundboard'
 import { Music } from './pages/Music'
 import { Jellyfin } from './pages/Jellyfin'
+import Login from './pages/Login'
 import type { BotStatus } from './types'
 
 const API_URL = '/api'
 
-function AppContent() {
+function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
   const [status, setStatus] = useState<BotStatus | null>(null)
   const [loading, setLoading] = useState(true)
@@ -39,7 +42,6 @@ function AppContent() {
     }
     init()
 
-    // Refresh status every 5 seconds
     const interval = setInterval(() => {
       fetchStatus()
     }, 5000)
@@ -58,27 +60,47 @@ function AppContent() {
     <>
       <TopNavigation onNavigate={(page: string) => navigate(`/${page === 'dashboard' ? '' : page}`)} />
       <Layout status={status}>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/users" element={<Users />} />
-          <Route path="/iptv" element={<Iptv />} />
-          <Route path="/bookmarks" element={<Bookmarks />} />
-          <Route path="/jellyfin" element={<Jellyfin />} />
-          <Route path="/soundboard" element={<Soundboard />} />
-          <Route path="/music" element={<Music />} />
-          <Route path="/settings" element={<Settings />} />
-        </Routes>
+        {children}
       </Layout>
     </>
+  )
+}
+
+function AppContent() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route
+        path="/*"
+        element={
+          <ProtectedRoute>
+            <AuthenticatedLayout>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/users" element={<Users />} />
+                <Route path="/iptv" element={<Iptv />} />
+                <Route path="/bookmarks" element={<Bookmarks />} />
+                <Route path="/jellyfin" element={<Jellyfin />} />
+                <Route path="/soundboard" element={<Soundboard />} />
+                <Route path="/music" element={<Music />} />
+                <Route path="/settings" element={<Settings />} />
+              </Routes>
+            </AuthenticatedLayout>
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
   )
 }
 
 function App() {
   return (
     <BrowserRouter>
-      <GuildProvider>
-        <AppContent />
-      </GuildProvider>
+      <AuthProvider>
+        <GuildProvider>
+          <AppContent />
+        </GuildProvider>
+      </AuthProvider>
     </BrowserRouter>
   )
 }

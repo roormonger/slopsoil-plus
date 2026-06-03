@@ -213,7 +213,7 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
               alt="SlopSoil"
               className="w-8 h-8 rounded-lg"
             />
-            <h1 className="text-xl font-bold gradient-text">SlopSoil</h1>
+            <h1 className="text-xl font-bold gradient-text">SlopSoil+</h1>
           </button>
         </div>
 
@@ -224,7 +224,11 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
             <div className="flex items-center gap-3">
               <div className="relative">
                 <img
-                  src={botStatus.avatar_url || `https://cdn.discordapp.com/avatars/${botStatus.user_id}/${botStatus.avatar}.png`}
+                  src={
+                    botStatus.avatar_url ||
+                    botStatus?.bot?.avatar_url ||
+                    `https://cdn.discordapp.com/avatars/${botStatus.user_id}/${botStatus.avatar}.png`
+                  }
                   onError={(e) => {
                     e.currentTarget.src = '/discord-avatar.png'
                   }}

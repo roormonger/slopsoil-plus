@@ -1,23 +1,11 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, Settings, Tv, Bookmark, Volume2, Music, PlayCircle } from 'lucide-react'
+import { LayoutDashboard, Users, Settings, Tv, Bookmark, Volume2, Music, PlayCircle, LogOut, User } from 'lucide-react'
 import type { BotStatus } from '../types'
+import { useAuth } from '../context/AuthContext'
 
 interface LayoutProps {
   children: React.ReactNode
   status: BotStatus | null
-}
-
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'running':
-      return 'text-emerald-400 status-pulse'
-    case 'stopped':
-      return 'text-red-400'
-    case 'pending_reload':
-      return 'text-amber-400'
-    default:
-      return 'text-slate-400'
-  }
 }
 
 const SidebarItem = ({ to, icon: Icon, label }: { to: string; icon: typeof LayoutDashboard; label: string }) => {
@@ -39,7 +27,9 @@ const SidebarItem = ({ to, icon: Icon, label }: { to: string; icon: typeof Layou
   )
 }
 
-export function Layout({ children, status }: LayoutProps) {
+export function Layout({ children, status: _status }: LayoutProps) {
+  const { user, logout } = useAuth()
+
   return (
     <div className="min-h-screen flex">
       {/* Sidebar with glass effect */}
@@ -62,17 +52,33 @@ export function Layout({ children, status }: LayoutProps) {
           <SidebarItem to="/settings" icon={Settings} label="Settings" />
         </nav>
 
-        <div className="p-4 border-t border-white/5">
-          <div className="flex items-center gap-3 glass-light rounded-xl p-3">
-            <div className={`w-2.5 h-2.5 rounded-full ${getStatusColor(status?.status || '')}`} />
-            <div className="flex-1">
-              <p className="text-xs text-slate-400">Bot Status</p>
-              <p className="text-sm font-medium capitalize text-slate-200">
-                {(status?.status || 'Unknown').replace('_', ' ')}
-              </p>
+        {user && (
+          <div className="p-4 border-t border-white/5">
+            <div className="flex items-center gap-3 glass-light rounded-xl p-3">
+              {/* Avatar */}
+              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold overflow-hidden shrink-0">
+                {user.avatar ? (
+                  <img src={user.avatar} alt={user.username} className="h-full w-full object-cover" />
+                ) : (
+                  <User className="h-5 w-5" />
+                )}
+              </div>
+              {/* User Info */}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-200 truncate">{user.username}</p>
+                <p className="text-xs text-slate-400 capitalize">{user.role}</p>
+              </div>
+              {/* Logout Button */}
+              <button
+                onClick={logout}
+                className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
+                title="Logout"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
             </div>
           </div>
-        </div>
+        )}
       </aside>
 
       {/* Main Content */}

@@ -19,6 +19,7 @@ from backend.database import (
     get_all_settings,
     get_all_users,
     is_config_modified,
+    set_setting,
 )
 
 # Import the bot class from slopsoil package
@@ -45,6 +46,7 @@ def _load_config_from_db() -> dict[str, Any]:
 
     return {
         "token": settings.get("discord_token", ""),
+        "avatar_url": settings.get("discord_avatar_url", ""),
         "command_prefix": settings.get("command_prefix", "!"),
         "allowed_ids": allowed_ids,
         "timezone": settings.get("timezone", ""),
@@ -107,22 +109,33 @@ async def start_bot() -> bool:
 
     # Create and configure bot
     _bot_instance = SlopSoil(config["allowed_ids"], command_prefix=config["command_prefix"])
-    
-    # Clear config modified flag on successful start (fresh config loaded)
-    clear_config_modified()
 
     # Start bot in background task
-    _bot_task = asyncio.create_task(_run_bot(config["token"]))
+    _bot_task = asyncio.create_task(_run_bot(config["token"], config.get("avatar_url", "")))
     log.info("Discord bot started")
     return True
 
 
-async def _run_bot(token: str) -> None:
+async def _run_bot(token: str, stored_avatar_url: str = "") -> None:
     """Internal coroutine to run the bot."""
     global _bot_instance
     try:
         if _bot_instance:
             await _bot_instance.start(token)
+            # Wait for bot to be ready before checking avatar
+            await _bot_instance.wait_until_ready()
+            # Bot is ready - fetch avatar from user object
+            if _bot_instance.user:
+                has_avatar = _bot_instance.user.avatar is not None
+                avatar_url = str(_bot_instance.user.avatar.url) if has_avatar else ""
+                log.info(f"DEBUG: Bot user found. has_avatar={has_avatar}, avatar_url={avatar_url!r}, stored={stored_avatar_url!r}")
+                if avatar_url != stored_avatar_url:
+                    set_setting("discord_avatar_url", avatar_url)
+                    log.info("Updated Discord bot avatar URL")
+                else:
+                    log.info("DEBUG: Avatar URL unchanged, no update needed")
+            else:
+                log.warning("DEBUG: Bot user is None after start")
     except Exception as e:
         log.error("Bot crashed: %s", e)
         _bot_instance = None
@@ -219,8 +232,13 @@ def get_bot_status() -> dict[str, Any]:
             bot_info = {
                 "id": str(user.id),
                 "name": user.name,
-                "avatar_url": str(user.avatar.url) if user.avatar else None,
+                "avatar_url": str(user.avatar.url) if user.avatar else config.get("avatar_url"),
             }
+    elif config.get("avatar_url"):
+        # Use stored avatar URL when bot is offline
+        bot_info = {
+            "avatar_url": config["avatar_url"],
+        }
 
     return {
         "status": status,

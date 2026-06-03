@@ -1,8 +1,10 @@
 ![](images/slopsoil-banner.png)  
 ![](https://github.com/dev-topsoil/slopsoil/actions/workflows/tests.yml/badge.svg) ![Python](https://img.shields.io/badge/python-%3E=3.1.4-blue.svg) [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-orange?logo=buy-me-a-coffee)](https://www.buymeacoffee.com/devtopsoil)  
-# Slopsoil - Stream from Jellyfin, YouTube, Tvheadend, or IPTV directly to Discord Voice Channels
+# SlopSoil+ - Enhanced Discord Streaming Bot with Web Administration
 
-**Slopsoil** is a Discord self-bot that streams live TV, IPTV playlists, YouTube videos, Jellyfin media, and any HTTP/HLS/RTSP stream directly into a Discord voice channel - as a screenshare that all server members can watch together.
+> **Fork Note:** Originally forked from [dev-topsoil/slopsoil](https://github.com/dev-topsoil/slopsoil). This fork has significantly evolved to add a comprehensive web administration interface, user authentication system, and modern React-based frontend.
+
+**SlopSoil+** is an enhanced Discord self-bot that streams live TV, IPTV playlists, YouTube videos, Jellyfin media, and any HTTP/HLS/RTSP stream directly into a Discord voice channel. It features a modern web-based admin panel with JWT authentication, user management, and real-time voice channel control.
 
 Features include TVheadend integration, Jellyfin integration, M3U/IPTV playlist management with live EPG (now-playing), YouTube playback via yt-dlp, and hardware-accelerated H.264 encoding via VA-API or NVIDIA NVENC.
 
@@ -38,6 +40,16 @@ Features include TVheadend integration, Jellyfin integration, M3U/IPTV playlist 
 |---|---|
 | ![Channel list showing TVheadend channels with now-playing info](images/slopsoil4.png) | ![Bot streaming video in a Discord voice channel](images/slopsoil3.png) |
 
+### Web Administration (screenshots coming soon)
+
+<!-- Add these screenshots to the images/ folder: -->
+<!-- - images/screenshot-login.png - Login page -->
+<!-- - images/screenshot-dashboard.png - Main dashboard -->
+<!-- - images/screenshot-users.png - User management -->
+<!-- - images/screenshot-voice.png - Voice channel controls -->
+<!-- - images/screenshot-music.png - Music player -->
+<!-- - images/screenshot-jellyfin.png - Jellyfin browser -->
+
 ---
 
 ## Features
@@ -52,6 +64,32 @@ Features include TVheadend integration, Jellyfin integration, M3U/IPTV playlist 
 - **H.264 hardware acceleration** - auto-detects NVIDIA NVENC, VA-API (Intel/AMD), or falls back to software encoding
 - **Discord DAVE E2EE support** - correctly handles Discord's end-to-end encryption protocol for voice channels
 - **Role-based access control** - admin, friend, viewer, and none tiers; friends list and guild membership are used automatically
+
+### Web Administration (New in SlopSoil+)
+
+- **JWT Authentication** - Secure login system with bcrypt password hashing, 7-day token expiration
+- **User Management** - Create/delete users, assign roles (admin/user), Discord ID linking, avatar support
+- **Modern React UI** - Built with React 18, TypeScript, Tailwind CSS, and shadcn/ui components
+- **Voice Channel Control** - Join/leave voice channels, view guilds and channels, execute bot commands from web UI
+- **Music Player** - Queue management, volume control, now playing display with track info
+- **IPTV Source Management** - Add/remove M3U sources, toggle sources on/off, view channel counts
+- **Bookmark Management** - Save and manage direct stream URLs with enable/disable toggle
+- **Settings Management** - Configure all bot settings through web interface, environment variable override support
+- **Encrypted Storage** - Sensitive settings encrypted at rest using Fernet encryption
+
+---
+
+## Architecture
+
+SlopSoil+ uses a modern architecture combining FastAPI backend with React frontend:
+
+| Component | Technology |
+|-----------|------------|
+| Backend | FastAPI + SQLite + discord.py-self |
+| Frontend | React 18 + TypeScript + Vite + Tailwind CSS |
+| UI Components | shadcn/ui (Radix + Tailwind) |
+| Authentication | JWT (python-jose) + bcrypt |
+| Deployment | Docker Compose (Fedora base) |
 
 ---
 

@@ -5,6 +5,7 @@ export interface SettingInfo {
 
 export interface Config {
   discord_token: string
+  discord_avatar_url: string
   command_prefix: string
   tvheadend_url: string
   tvheadend_user: string
@@ -24,6 +25,7 @@ export interface Config {
 // New interface for settings with source info from API
 export interface SettingsWithEnv {
   discord_token: SettingInfo
+  discord_avatar_url: SettingInfo
   command_prefix: SettingInfo
   tvheadend_url: SettingInfo
   tvheadend_user: SettingInfo

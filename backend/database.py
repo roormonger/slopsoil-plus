@@ -8,6 +8,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import bcrypt
+
 # Import encryption utilities
 from backend.encryption import encrypt_value, decrypt_value, is_encrypted
 
@@ -35,8 +37,19 @@ ENCRYPTED_USER_FIELDS = {
 }
 
 # Default settings keys to pre-seed
+def hash_password(password: str) -> str:
+    """Hash a password using bcrypt."""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    """Verify a password against a hash."""
+    return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
+
+
 DEFAULT_SETTINGS = {
     "discord_token": "",
+    "discord_avatar_url": "",  # Bot user avatar URL
     "command_prefix": "!",
     "tvheadend_url": "",
     "tvheadend_user": "",

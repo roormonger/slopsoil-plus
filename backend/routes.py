@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import bcrypt
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -12,10 +12,21 @@ from typing import Any
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi.security import HTTPBearer
 from pydantic import BaseModel, Field
 
+from backend.auth import (
+    authenticate_user,
+    create_access_token,
+    get_current_user,
+    TokenData,
+    TokenResponse,
+    ACCESS_TOKEN_EXPIRE_DAYS,
+)
+
 from backend.database import (
+    _ORIGINAL_ENV_VARS,
     get_all_settings,
     get_all_settings_with_env,
     mark_config_modified,
@@ -28,6 +39,8 @@ from backend.database import (
     delete_user as db_delete_user,
     get_all_users,
     update_user_bookmarks,
+    hash_password,
+    verify_password,
 )
 from backend.bot_runner import (
     fetch_discord_user,
@@ -47,6 +60,34 @@ router = APIRouter()
 log = logging.getLogger(__name__)
 
 
+async def fetch_discord_avatar(token: str) -> str | None:
+    """Fetch Discord bot user avatar URL from token.
+    
+    Returns the avatar URL string, or None if no avatar or failed.
+    """
+    try:
+        import httpx
+        headers = {"Authorization": f"Bot {token}"}
+        async with httpx.AsyncClient() as client:
+            response = await client.get("https://discord.com/api/v10/users/@me", headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                user_id = data.get("id")
+                avatar_hash = data.get("avatar")
+                if user_id and avatar_hash:
+                    # Discord CDN URL format for avatars
+                    return f"https://cdn.discordapp.com/avatars/{user_id}/{avatar_hash}.png"
+                else:
+                    log.info("Discord bot has no custom avatar set")
+                    return None
+            else:
+                log.warning(f"Failed to fetch Discord user: HTTP {response.status_code}")
+                return None
+    except Exception as e:
+        log.warning(f"Failed to fetch Discord avatar: {e}")
+        return None
+
+
 # Request/Response models
 
 class SettingInfo(BaseModel):
@@ -61,6 +102,7 @@ class ConfigResponse(BaseModel):
 
 class ConfigUpdateRequest(BaseModel):
     discord_token: str | None = None
+    discord_avatar_url: str | None = None
     command_prefix: str | None = None
     tvheadend_url: str | None = None
     tvheadend_user: str | None = None
@@ -182,6 +224,8 @@ async def update_config(request: ConfigUpdateRequest) -> dict[str, str]:
 
     updated = []
     skipped_env = []
+    avatar_updated = False
+    
     for key, value in settings_map.items():
         if value is not None:
             # Check if this setting is controlled by env var
@@ -191,6 +235,21 @@ async def update_config(request: ConfigUpdateRequest) -> dict[str, str]:
                 continue
             set_setting(key, value)
             updated.append(key)
+            
+            # If Discord token was updated and not env-controlled, fetch avatar
+            if key == "discord_token":
+                # Check if discord_avatar_url is env-controlled
+                if "DISCORD_AVATAR_URL" not in _ORIGINAL_ENV_VARS:
+                    avatar_url = await fetch_discord_avatar(value)
+                    if avatar_url:
+                        set_setting("discord_avatar_url", avatar_url)
+                        updated.append("discord_avatar_url")
+                        avatar_updated = True
+                    else:
+                        # Clear avatar if no avatar found
+                        set_setting("discord_avatar_url", "")
+                        updated.append("discord_avatar_url")
+                        avatar_updated = True
 
     # Mark config as modified to trigger reload notification
     if updated:
@@ -199,6 +258,8 @@ async def update_config(request: ConfigUpdateRequest) -> dict[str, str]:
     message = f"Updated {len(updated)} settings"
     if skipped_env:
         message += f" (skipped {len(skipped_env)} env-controlled: {', '.join(skipped_env)})"
+    if avatar_updated:
+        message += " (avatar refreshed)"
     return {"message": message, "updated": ", ".join(updated), "skipped": ", ".join(skipped_env)}
 
 
@@ -779,6 +840,49 @@ async def get_jellyfin_items_endpoint(
         return []
 
 
+# Authentication API Routes
+
+class LoginRequest(BaseModel):
+    """Login request model."""
+    username: str
+    password: str
+
+
+@router.post("/api/auth/login", response_model=TokenResponse)
+async def login(request: LoginRequest):
+    """Authenticate user and return JWT token."""
+    user = authenticate_user(request.username, request.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    access_token = create_access_token(
+        data={
+            "sub": str(user["user_id"]),
+            "username": user["username"],
+            "role": user["role"],
+        }
+    )
+    
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=7 * 24 * 60 * 60,  # 7 days in seconds
+    )
+
+
+@router.get("/api/auth/me", response_model=UserResponse)
+async def get_current_user_info(current_user: TokenData = Depends(get_current_user)):
+    """Get current authenticated user profile."""
+    user = get_user_by_user_id(current_user.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return UserResponse(**user)
+
+
 # User Management API Routes
 
 @router.get("/api/users", response_model=list[UserResponse])
@@ -808,7 +912,7 @@ async def create_new_user(user_request: UserCreateRequest):
                 raise HTTPException(status_code=400, detail="Discord ID already exists")
         
         # Hash password using bcrypt
-        password_hash = bcrypt.hashpw(user_request.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        password_hash = hash_password(user_request.password)
         
         user_id = create_user(
             username=user_request.username,
@@ -925,9 +1029,3 @@ async def delete_user_endpoint(user_id: str):
         raise HTTPException(status_code=500, detail="Failed to delete user")
 
 
-@router.get("/api/users/me", response_model=UserResponse)
-async def get_current_user():
-    """Get current user profile (placeholder for future login system)."""
-    # This is a placeholder for when we implement login
-    # For now, return a default user or require authentication
-    raise HTTPException(status_code=501, detail="Login system not implemented yet")

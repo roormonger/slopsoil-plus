@@ -9,6 +9,7 @@ export function Settings() {
   const api = useApi()
   const [config, setConfig] = useState<Config>({
     discord_token: '',
+    discord_avatar_url: '',
     command_prefix: '!',
     tvheadend_url: '',
     tvheadend_user: '',

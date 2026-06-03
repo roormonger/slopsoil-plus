@@ -103,6 +103,17 @@ class SlopSoil(commands.Bot):
         log.info("logged in as %s (id: %s)", self.user, self.user.id)
         log.info("allowed users: %s", self.allowed_ids or "none (only self)")
         log.info("serving %d guild(s)", len(self.guilds))
+        
+        # Check and update avatar URL in database
+        try:
+            from backend.database import get_setting, set_setting
+            avatar_url = str(self.user.avatar.url) if self.user.avatar else ""
+            stored_avatar_url = get_setting("discord_avatar_url") or ""
+            if avatar_url != stored_avatar_url:
+                set_setting("discord_avatar_url", avatar_url)
+                log.info("Updated Discord bot avatar URL in database")
+        except Exception as e:
+            log.warning("Failed to update avatar URL: %s", e)
 
     async def on_command(self, ctx: commands.Context):
         log.info(
