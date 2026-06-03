@@ -64,17 +64,18 @@ Features include TVheadend integration, Jellyfin integration, M3U/IPTV playlist 
 - **H.264 hardware acceleration** - auto-detects NVIDIA NVENC, VA-API (Intel/AMD), or falls back to software encoding
 - **Discord DAVE E2EE support** - correctly handles Discord's end-to-end encryption protocol for voice channels
 - **Role-based access control** - admin, friend, viewer, and none tiers; friends list and guild membership are used automatically
+- **Configurable Command Prefix** - customize the bot's command prefix (default: `!`) via web UI or environment variable
 
 ### Web Administration (New in SlopSoil+)
 
 - **JWT Authentication** - Secure login system with bcrypt password hashing, 7-day token expiration
 - **User Management** - Create/delete users, assign roles (admin/user), Discord ID linking, avatar support
 - **Modern React UI** - Built with React 18, TypeScript, Tailwind CSS, and shadcn/ui components
-- **Voice Channel Control** - Join/leave voice channels, view guilds and channels, execute bot commands from web UI
+- **Voice Channel Control** - Join/leave voice channels, play audio streams directly through the bot's voice connection, execute bot commands from web UI
 - **Music Player** - Queue management, volume control, now playing display with track info
 - **IPTV Source Management** - Add/remove M3U sources, toggle sources on/off, view channel counts
 - **Bookmark Management** - Save and manage direct stream URLs with enable/disable toggle
-- **Settings Management** - Configure all bot settings through web interface, environment variable override support
+- **Settings Management** - Configure all bot settings through web interface; environment variables take precedence over UI settings (except `ENCRYPTION_KEY` which must be set via env var for security)
 - **Encrypted Storage** - Sensitive settings encrypted at rest using Fernet encryption
 
 ---
