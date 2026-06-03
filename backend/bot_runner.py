@@ -21,6 +21,7 @@ from backend.database import (
     is_config_modified,
     set_setting,
 )
+from backend.ws import ws_manager
 
 # Import the bot class from slopsoil package
 from bot import SlopSoil
@@ -30,6 +31,7 @@ log = logging.getLogger(__name__)
 # Global bot instance reference
 _bot_instance: SlopSoil | None = None
 _bot_task: asyncio.Task | None = None
+_bot_should_stop: bool = False
 
 
 def _load_config_from_db() -> dict[str, Any]:
@@ -92,7 +94,7 @@ async def start_bot() -> bool:
 
     Returns True if started successfully, False otherwise.
     """
-    global _bot_instance, _bot_task
+    global _bot_instance, _bot_task, _bot_should_stop
 
     if _bot_instance is not None:
         log.warning("Bot is already running")
@@ -107,38 +109,72 @@ async def start_bot() -> bool:
     # Set env vars for legacy cog compatibility
     _set_env_from_config(config)
 
-    # Create and configure bot
-    _bot_instance = SlopSoil(config["allowed_ids"], command_prefix=config["command_prefix"])
-
-    # Start bot in background task
-    _bot_task = asyncio.create_task(_run_bot(config["token"], config.get("avatar_url", "")))
+    # Start bot supervisor in background task
+    _bot_task = asyncio.create_task(_bot_supervisor(config))
     log.info("Discord bot started")
+
+    # Start WebSocket broadcast watcher
+    asyncio.create_task(_ws_state_watcher())
     return True
 
 
+async def _bot_supervisor(config: dict) -> None:
+    """Supervisor that starts the bot and retries on failure."""
+    global _bot_instance, _bot_should_stop
+    token = config["token"]
+    stored_avatar_url = config.get("avatar_url", "")
+    max_retries = 10
+    retries = 0
+    while retries < max_retries:
+        if _bot_should_stop:
+            break
+        try:
+            _bot_instance = SlopSoil(
+                config["allowed_ids"], command_prefix=config["command_prefix"]
+            )
+            await _run_bot(token, stored_avatar_url)
+            return  # Normal exit
+        except asyncio.CancelledError:
+            _bot_instance = None
+            _bot_should_stop = False
+            raise
+        except Exception as e:
+            retries += 1
+            _bot_instance = None
+            if _bot_should_stop:
+                break
+            log.error("Bot crashed (attempt %d/%d): %s", retries, max_retries, e)
+            if retries < max_retries:
+                wait = min(2 ** retries, 60)
+                log.info("Retrying bot start in %ds...", wait)
+                await asyncio.sleep(wait)
+    _bot_should_stop = False
+
+
 async def _run_bot(token: str, stored_avatar_url: str = "") -> None:
-    """Internal coroutine to run the bot."""
+    """Internal coroutine to run the bot. Assumes _bot_instance is set."""
     global _bot_instance
-    try:
-        if _bot_instance:
-            await _bot_instance.start(token)
-            # Wait for bot to be ready before checking avatar
-            await _bot_instance.wait_until_ready()
-            # Bot is ready - fetch avatar from user object
-            if _bot_instance.user:
-                has_avatar = _bot_instance.user.avatar is not None
-                avatar_url = str(_bot_instance.user.avatar.url) if has_avatar else ""
-                log.info(f"DEBUG: Bot user found. has_avatar={has_avatar}, avatar_url={avatar_url!r}, stored={stored_avatar_url!r}")
-                if avatar_url != stored_avatar_url:
-                    set_setting("discord_avatar_url", avatar_url)
-                    log.info("Updated Discord bot avatar URL")
-                else:
-                    log.info("DEBUG: Avatar URL unchanged, no update needed")
+    if _bot_instance:
+        await _bot_instance.start(token)
+        # Wait for bot to be ready before checking avatar
+        await _bot_instance.wait_until_ready()
+        # Bot is ready - fetch avatar from user object
+        if _bot_instance.user:
+            has_avatar = _bot_instance.user.avatar is not None
+            avatar_url = str(_bot_instance.user.avatar.url) if has_avatar else ""
+            log.info(
+                "DEBUG: Bot user found. has_avatar=%s, avatar_url=%r, stored=%r",
+                has_avatar,
+                avatar_url,
+                stored_avatar_url,
+            )
+            if avatar_url != stored_avatar_url:
+                set_setting("discord_avatar_url", avatar_url)
+                log.info("Updated Discord bot avatar URL")
             else:
-                log.warning("DEBUG: Bot user is None after start")
-    except Exception as e:
-        log.error("Bot crashed: %s", e)
-        _bot_instance = None
+                log.info("DEBUG: Avatar URL unchanged, no update needed")
+        else:
+            log.warning("DEBUG: Bot user is None after start")
 
 
 async def stop_bot() -> bool:
@@ -146,11 +182,12 @@ async def stop_bot() -> bool:
 
     Returns True if stopped successfully.
     """
-    global _bot_instance, _bot_task
+    global _bot_instance, _bot_task, _bot_should_stop
 
     if _bot_instance is None:
         return True
 
+    _bot_should_stop = True
     log.info("Stopping Discord bot...")
 
     try:
@@ -405,9 +442,11 @@ async def join_voice_channel(guild_id: str, channel_id: str) -> dict[str, Any]:
         # Move or connect
         if vc:
             await vc.move_to(channel)
+            await _broadcast_voice_state(guild_id, True, channel_id)
             return {"success": True, "message": f"Moved to {channel.name}"}
         else:
             await channel.connect(self_deaf=True)
+            await _broadcast_voice_state(guild_id, True, channel_id)
             return {"success": True, "message": f"Joined {channel.name}"}
 
     except Exception as e:
@@ -601,3 +640,53 @@ async def execute_bot_command(
             except Exception:
                 pass
         return {"success": False, "message": f"Error: {str(e)}"}
+
+
+# WebSocket broadcast helpers
+
+_last_now_playing: dict | None = None
+_last_bot_status: dict | None = None
+
+
+async def _ws_state_watcher() -> None:
+    """Background task that watches bot state and broadcasts changes."""
+    global _last_now_playing, _last_bot_status
+    while True:
+        await asyncio.sleep(3)
+        if _bot_instance is None:
+            # Bot offline — broadcast if status changed
+            offline_status = {
+                "online": False,
+                "username": "",
+                "avatar_url": "",
+            }
+            if _last_bot_status != offline_status:
+                _last_bot_status = offline_status
+                await ws_manager.broadcast("bot:status", offline_status)
+            continue
+
+        # Bot online — check status
+        try:
+            current_status = get_bot_status()
+        except Exception:
+            continue
+        if _last_bot_status != current_status:
+            _last_bot_status = current_status
+            await ws_manager.broadcast("bot:status", current_status)
+
+        # Check now playing
+        try:
+            current_np = get_now_playing()
+        except Exception:
+            current_np = {"streams": [], "count": 0}
+        if _last_now_playing != current_np:
+            _last_now_playing = current_np
+            await ws_manager.broadcast("player:now-playing", current_np)
+
+
+async def _broadcast_voice_state(guild_id: str, connected: bool, channel_id: str | None = None) -> None:
+    """Broadcast voice state change via WebSocket."""
+    await ws_manager.broadcast(
+        "voice:state",
+        {"guild_id": guild_id, "connected": connected, "channel_id": channel_id},
+    )

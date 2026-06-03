@@ -630,7 +630,28 @@ def log_command(
                 error_message,
             ),
         )
-        return cursor.lastrowid
+        row_id = cursor.lastrowid
+
+        # Broadcast new command via WebSocket
+        try:
+            import asyncio
+            from backend.ws import ws_manager
+            asyncio.create_task(
+                ws_manager.broadcast(
+                    "commands:new",
+                    {
+                        "id": row_id,
+                        "command": command,
+                        "username": username,
+                        "timestamp": __import__("datetime").datetime.now().isoformat(),
+                        "source": source,
+                    },
+                )
+            )
+        except Exception:
+            pass
+
+        return row_id
 
 
 def get_command_history(

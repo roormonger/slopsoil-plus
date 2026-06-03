@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import ValidationError
 
 from backend.routes import router
+from backend.ws import ws_router
 from backend.bot_runner import start_bot
 
 # Configure logging
@@ -45,6 +46,7 @@ app.add_middleware(
 
 # Include API routes
 app.include_router(router)
+app.include_router(ws_router)
 
 
 # Exception handler to log validation errors for debugging

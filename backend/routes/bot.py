@@ -22,8 +22,8 @@ router = APIRouter()
 
 class BotInfo(BaseModel):
     """Bot user information."""
-    id: str
-    name: str = ""
+    id: str | None = None
+    name: str | None = None
     avatar_url: str | None = None
 
 
