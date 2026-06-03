@@ -35,6 +35,7 @@ class BookmarkActionResponse(BaseModel):
     enabled: bool | None = None
 
 
+@router.get("", response_model=list[BookmarkResponse])
 @router.get("/", response_model=list[BookmarkResponse])
 async def get_bookmarks_endpoint() -> list[BookmarkResponse]:
     """Get all bookmarks."""

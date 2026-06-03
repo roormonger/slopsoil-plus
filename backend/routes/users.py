@@ -49,6 +49,7 @@ class UserActionResponse(BaseModel):
     message: str
 
 
+@router.get("", response_model=list[UserResponse])
 @router.get("/", response_model=list[UserResponse])
 async def get_users(role: str | None = None):
     """Get all users, optionally filtered by role."""

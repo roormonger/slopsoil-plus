@@ -56,6 +56,7 @@ class ConfigUpdateResponse(BaseModel):
     avatar_updated: bool = False
 
 
+@router.get("", response_model=ConfigResponse)
 @router.get("/", response_model=ConfigResponse)
 async def get_config() -> ConfigResponse:
     """Get current configuration and users."""
