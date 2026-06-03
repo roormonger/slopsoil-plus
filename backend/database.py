@@ -177,6 +177,29 @@ def init_database() -> None:
             )
         """)
 
+        # Command history table for analytics
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS command_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                source TEXT NOT NULL DEFAULT 'discord',
+                command TEXT NOT NULL,
+                args TEXT,
+                user_id TEXT,
+                username TEXT,
+                guild_id TEXT,
+                guild_name TEXT,
+                channel_id TEXT,
+                channel_name TEXT,
+                cog_name TEXT,
+                is_voice INTEGER NOT NULL DEFAULT 0,
+                is_video INTEGER NOT NULL DEFAULT 0,
+                is_music INTEGER NOT NULL DEFAULT 0,
+                success INTEGER NOT NULL DEFAULT 1,
+                error_message TEXT
+            )
+        """)
+
         # Pre-seed default settings if they don't exist
         for key, value in DEFAULT_SETTINGS.items():
             cursor.execute(
@@ -549,11 +572,188 @@ def update_user_bookmarks(user_id: str, bookmarks_type: str, bookmarks: list) ->
     """Update user bookmarks (video or voice)."""
     if bookmarks_type not in ['video', 'voice']:
         return False
-    
+
     bookmarks_json = json.dumps(bookmarks)
     column_name = f'bookmarks_{bookmarks_type}'
-    
+
     return update_user(user_id, **{column_name: bookmarks_json})
+
+
+# Command history logging
+
+def log_command(
+    source: str,
+    command: str,
+    args: list | None = None,
+    user_id: str | None = None,
+    username: str | None = None,
+    guild_id: str | None = None,
+    guild_name: str | None = None,
+    channel_id: str | None = None,
+    channel_name: str | None = None,
+    cog_name: str | None = None,
+    is_voice: bool = False,
+    is_video: bool = False,
+    is_music: bool = False,
+    success: bool = True,
+    error_message: str | None = None,
+) -> int:
+    """Log a command invocation to the history table.
+
+    Returns the inserted row id.
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO command_history (
+                source, command, args, user_id, username,
+                guild_id, guild_name, channel_id, channel_name,
+                cog_name, is_voice, is_video, is_music, success, error_message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                source,
+                command,
+                json.dumps(args) if args else None,
+                user_id,
+                username,
+                guild_id,
+                guild_name,
+                channel_id,
+                channel_name,
+                cog_name,
+                int(is_voice),
+                int(is_video),
+                int(is_music),
+                int(success),
+                error_message,
+            ),
+        )
+        return cursor.lastrowid
+
+
+def get_command_history(
+    limit: int = 100,
+    offset: int = 0,
+    source: str | None = None,
+    guild_id: str | None = None,
+    user_id: str | None = None,
+) -> list[dict]:
+    """Get paginated command history, optionally filtered."""
+    with get_db() as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        query = "SELECT * FROM command_history WHERE 1=1"
+        params: list[Any] = []
+
+        if source:
+            query += " AND source = ?"
+            params.append(source)
+        if guild_id:
+            query += " AND guild_id = ?"
+            params.append(guild_id)
+        if user_id:
+            query += " AND user_id = ?"
+            params.append(user_id)
+
+        query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_command_stats(days: int = 30) -> dict[str, Any]:
+    """Get aggregated command statistics for the given time window."""
+    with get_db() as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        since = f"-{days} days"
+
+        # Total commands
+        cursor.execute(
+            "SELECT COUNT(*) as total FROM command_history WHERE timestamp >= datetime('now', ?)",
+            (since,),
+        )
+        total = cursor.fetchone()["total"]
+
+        # By command
+        cursor.execute(
+            """
+            SELECT command, COUNT(*) as count FROM command_history
+            WHERE timestamp >= datetime('now', ?)
+            GROUP BY command ORDER BY count DESC LIMIT 20
+            """,
+            (since,),
+        )
+        by_command = [dict(r) for r in cursor.fetchall()]
+
+        # By user
+        cursor.execute(
+            """
+            SELECT user_id, username, COUNT(*) as count FROM command_history
+            WHERE timestamp >= datetime('now', ?)
+            GROUP BY user_id ORDER BY count DESC LIMIT 20
+            """,
+            (since,),
+        )
+        by_user = [dict(r) for r in cursor.fetchall()]
+
+        # By guild
+        cursor.execute(
+            """
+            SELECT guild_id, guild_name, COUNT(*) as count FROM command_history
+            WHERE timestamp >= datetime('now', ?)
+            GROUP BY guild_id ORDER BY count DESC LIMIT 20
+            """,
+            (since,),
+        )
+        by_guild = [dict(r) for r in cursor.fetchall()]
+
+        # By source
+        cursor.execute(
+            """
+            SELECT source, COUNT(*) as count FROM command_history
+            WHERE timestamp >= datetime('now', ?)
+            GROUP BY source
+            """,
+            (since,),
+        )
+        by_source = {r["source"]: r["count"] for r in cursor.fetchall()}
+
+        # By category (voice, video, music)
+        cursor.execute(
+            """
+            SELECT
+                SUM(is_voice) as voice,
+                SUM(is_video) as video,
+                SUM(is_music) as music,
+                COUNT(*) - SUM(is_voice) - SUM(is_video) - SUM(is_music) as other
+            FROM command_history
+            WHERE timestamp >= datetime('now', ?)
+            """,
+            (since,),
+        )
+        row = cursor.fetchone()
+        by_category = {
+            "voice": row["voice"] or 0,
+            "video": row["video"] or 0,
+            "music": row["music"] or 0,
+            "other": row["other"] or 0,
+        }
+
+        return {
+            "total": total,
+            "by_command": by_command,
+            "by_user": by_user,
+            "by_guild": by_guild,
+            "by_source": by_source,
+            "by_category": by_category,
+        }
 
 
 # Initialize on module import

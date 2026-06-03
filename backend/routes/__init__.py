@@ -10,6 +10,7 @@ This package organizes API routes by domain:
 - iptv: IPTV sources and channels
 - bookmarks: Bookmark management
 - jellyfin: Jellyfin integration
+- commands: Command history and analytics
 """
 
 from fastapi import APIRouter
@@ -23,6 +24,7 @@ from backend.routes.music import router as music_router
 from backend.routes.iptv import router as iptv_router
 from backend.routes.bookmarks import router as bookmarks_router
 from backend.routes.jellyfin import router as jellyfin_router
+from backend.routes.commands import router as commands_router
 
 # Main router that aggregates all domain routers
 router = APIRouter()
@@ -37,5 +39,6 @@ router.include_router(music_router, prefix="/api")
 router.include_router(iptv_router, prefix="/api")
 router.include_router(bookmarks_router, prefix="/api")
 router.include_router(jellyfin_router, prefix="/api")
+router.include_router(commands_router, prefix="/api")
 
 __all__ = ["router"]

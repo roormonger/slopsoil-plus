@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 import davey_compat
 import video_compat
+from backend.database import log_command as db_log_command
 from permissions import Role, get_user_role
 
 if TYPE_CHECKING:
@@ -128,6 +129,32 @@ class SlopSoil(commands.Bot):
     async def on_command_error(
         self, ctx: commands.Context, error: commands.CommandError
     ):
+        # Log failed command to history
+        cog_name = ctx.cog.__class__.__name__ if ctx.cog else None
+        is_voice = cog_name in ("Voice",)
+        is_video = cog_name in ("TV", "IPTV", "Jellyfin", "VideoPlayer")
+        is_music = cog_name in ("Music",)
+        try:
+            db_log_command(
+                source="discord",
+                command=ctx.command.qualified_name if ctx.command else ctx.message.content,
+                args=ctx.args[2:] if len(ctx.args) > 2 else None,
+                user_id=str(ctx.author.id),
+                username=str(ctx.author),
+                guild_id=str(ctx.guild.id) if ctx.guild else None,
+                guild_name=ctx.guild.name if ctx.guild else None,
+                channel_id=str(ctx.channel.id) if ctx.channel else None,
+                channel_name=ctx.channel.name if hasattr(ctx.channel, "name") else None,
+                cog_name=cog_name,
+                is_voice=is_voice,
+                is_video=is_video,
+                is_music=is_music,
+                success=False,
+                error_message=str(error),
+            )
+        except Exception:
+            pass  # Don't let logging failures break error handling
+
         # CheckFailure means the user failed a role check — ignore silently
         if isinstance(error, commands.CheckFailure):
             log.debug(

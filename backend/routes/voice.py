@@ -18,6 +18,8 @@ from backend.bot_runner import (
     execute_bot_command,
 )
 from backend.services.discord import fetch_discord_user
+from backend.auth import get_current_user
+from backend.database import get_user_by_user_id
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -76,6 +78,11 @@ class CommandExecuteResponse(BaseModel):
     """Response model for command execution."""
     success: bool
     message: str
+    command: str | None = None
+    cog_name: str | None = None
+    is_voice: bool = False
+    is_video: bool = False
+    is_music: bool = False
 
 
 class DiscordUserLookupResponse(BaseModel):
