@@ -1,9 +1,11 @@
 # Stage 1: Build frontend with Node.js
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 
 WORKDIR /build
+RUN apk upgrade --no-cache
+RUN npm install -g npm@latest
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install
+RUN npm install && npm audit fix
 
 COPY frontend/ ./
 RUN npm run build
