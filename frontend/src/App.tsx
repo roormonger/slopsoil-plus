@@ -1,10 +1,9 @@
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
-import { Loader2 } from 'lucide-react'
 import { Layout } from './components/Layout'
 import TopNavigation from './components/TopNavigation'
 import { GuildProvider } from './contexts/GuildContext'
 import { AuthProvider } from './context/AuthContext'
+import { WebSocketProvider } from './context/WebSocketContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import { Dashboard } from './pages/Dashboard'
 import { Users } from './pages/Users'
@@ -15,51 +14,14 @@ import { Soundboard } from './pages/Soundboard'
 import { Music } from './pages/Music'
 import { Jellyfin } from './pages/Jellyfin'
 import Login from './pages/Login'
-import type { BotStatus } from './types'
-
-const API_URL = '/api'
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
-  const [status, setStatus] = useState<BotStatus | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  const fetchStatus = async () => {
-    try {
-      const res = await fetch(`${API_URL}/bot/status`)
-      if (!res.ok) throw new Error('Failed to fetch status')
-      const data = await res.json()
-      setStatus(data)
-    } catch (err) {
-      console.error('Failed to load status:', err)
-    }
-  }
-
-  useEffect(() => {
-    const init = async () => {
-      await fetchStatus()
-      setLoading(false)
-    }
-    init()
-
-    const interval = setInterval(() => {
-      fetchStatus()
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [])
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
-  }
 
   return (
     <>
       <TopNavigation onNavigate={(page: string) => navigate(`/${page === 'dashboard' ? '' : page}`)} />
-      <Layout status={status}>
+      <Layout>
         {children}
       </Layout>
     </>
@@ -98,7 +60,9 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <GuildProvider>
-          <AppContent />
+          <WebSocketProvider>
+            <AppContent />
+          </WebSocketProvider>
         </GuildProvider>
       </AuthProvider>
     </BrowserRouter>

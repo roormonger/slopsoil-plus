@@ -2,16 +2,18 @@ import { useState, useEffect } from 'react'
 import { Loader2, Radio, Users, Server, Zap, Music2, Video } from 'lucide-react'
 import { Badge } from '../components/ui/badge'
 import { useApi } from '../hooks/useApi'
+import { useWebSocketContext } from '../context/WebSocketContext'
 import type { BotStatus, NowPlaying, MusicStatus } from '../types'
 
 export function Dashboard() {
   const api = useApi()
+  const { botStatus: wsBotStatus, nowPlaying: wsNowPlaying, musicStatus: wsMusicStatus } = useWebSocketContext()
   const [status, setStatus] = useState<BotStatus | null>(null)
   const [nowPlaying, setNowPlaying] = useState<NowPlaying[]>([])
   const [musicStatus, setMusicStatus] = useState<MusicStatus | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Load initial data
+  // Load initial data once on mount
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
@@ -26,18 +28,21 @@ export function Dashboard() {
       setLoading(false)
     }
     loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Refresh music and now playing status every 5 seconds
+  // Sync WebSocket updates into local state
   useEffect(() => {
-    const interval = setInterval(async () => {
-      const nowPlayingData = await api.fetchNowPlaying()
-      if (nowPlayingData) setNowPlaying(nowPlayingData)
-      const musicStatusData = await api.fetchMusicStatus()
-      if (musicStatusData) setMusicStatus(musicStatusData)
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [])
+    if (wsBotStatus) setStatus(wsBotStatus)
+  }, [wsBotStatus])
+
+  useEffect(() => {
+    setNowPlaying(wsNowPlaying)
+  }, [wsNowPlaying])
+
+  useEffect(() => {
+    if (wsMusicStatus) setMusicStatus(wsMusicStatus)
+  }, [wsMusicStatus])
 
   
   

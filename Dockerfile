@@ -33,6 +33,9 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Remove any old frontend dist files so stale hashed bundles don't persist
+RUN rm -rf ./frontend/dist
+
 # Copy built frontend from stage 1
 COPY --from=frontend-builder /build/dist ./frontend/dist
 

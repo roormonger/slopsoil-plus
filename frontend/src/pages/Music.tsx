@@ -4,17 +4,19 @@ import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useApi } from '../hooks/useApi'
 import { useGuild } from '../contexts/GuildContext'
+import { useWebSocketContext } from '../context/WebSocketContext'
 import type { MusicStatus } from '../types'
 
 export function Music() {
   const api = useApi()
   const { selectedGuild } = useGuild()
+  const { musicStatus: wsMusicStatus } = useWebSocketContext()
   const [status, setStatus] = useState<MusicStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [isSearching, setIsSearching] = useState(false)
 
-  // Fetch music status
+  // Fetch music status (manual call after user actions)
   const loadStatus = useCallback(async () => {
     const data = await api.fetchMusicStatus()
     if (data) {
@@ -23,12 +25,26 @@ export function Music() {
     setLoading(false)
   }, [api])
 
-  // Initial load and polling
+  // Initial load once on mount
   useEffect(() => {
-    loadStatus()
-    const interval = setInterval(loadStatus, 3000)
-    return () => clearInterval(interval)
-  }, [loadStatus])
+    const loadData = async () => {
+      const data = await api.fetchMusicStatus()
+      if (data) {
+        setStatus(data)
+      }
+      setLoading(false)
+    }
+    loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Sync WebSocket music updates
+  useEffect(() => {
+    if (wsMusicStatus) {
+      setStatus(wsMusicStatus)
+      setLoading(false)
+    }
+  }, [wsMusicStatus])
 
   const handlePlay = async () => {
     if (!selectedGuild || !searchQuery.trim()) return

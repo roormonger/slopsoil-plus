@@ -414,6 +414,68 @@ def get_bot_voice_status() -> dict[str, Any]:
     return {"connected": False}
 
 
+def get_music_status() -> dict[str, Any] | None:
+    """Get current music playback status.
+
+    Returns None if bot is not running.
+    """
+    if _bot_instance is None:
+        return None
+
+    music_current = getattr(_bot_instance, "music_current", {})
+    music_queues = getattr(_bot_instance, "music_queues", {})
+    music_volumes = getattr(_bot_instance, "music_volumes", {})
+
+    guild_id = next(iter(music_current.keys()), None)
+
+    current_track = None
+    queue_tracks = []
+    is_playing = False
+    is_paused = False
+    volume = 1.0
+
+    if guild_id is not None:
+        current = music_current.get(guild_id)
+        queue = music_queues.get(guild_id, [])
+        volume = music_volumes.get(guild_id, 1.0)
+
+        guild = _bot_instance.get_guild(guild_id)
+        if guild and guild.voice_client:
+            is_playing = guild.voice_client.is_playing()
+            is_paused = guild.voice_client.is_paused()
+
+        if current:
+            current_track = {
+                "url": current.url,
+                "title": current.title,
+                "duration": current.duration,
+                "thumbnail": current.thumbnail,
+                "requested_by": current.requested_by,
+                "webpage_url": current.webpage_url,
+            }
+
+        queue_tracks = [
+            {
+                "url": track.url,
+                "title": track.title,
+                "duration": track.duration,
+                "thumbnail": track.thumbnail,
+                "requested_by": track.requested_by,
+                "webpage_url": track.webpage_url,
+            }
+            for track in queue
+        ]
+
+    return {
+        "current": current_track,
+        "queue": queue_tracks,
+        "queue_length": len(queue_tracks),
+        "volume": volume,
+        "is_playing": is_playing,
+        "is_paused": is_paused,
+    }
+
+
 async def join_voice_channel(guild_id: str, channel_id: str) -> dict[str, Any]:
     """Join a specific voice channel in a guild.
 
@@ -646,11 +708,13 @@ async def execute_bot_command(
 
 _last_now_playing: dict | None = None
 _last_bot_status: dict | None = None
+_last_music_status: dict | None = None
+_last_voice_status: dict | None = None
 
 
 async def _ws_state_watcher() -> None:
     """Background task that watches bot state and broadcasts changes."""
-    global _last_now_playing, _last_bot_status
+    global _last_now_playing, _last_bot_status, _last_music_status, _last_voice_status
     while True:
         await asyncio.sleep(3)
         if _bot_instance is None:
@@ -682,6 +746,24 @@ async def _ws_state_watcher() -> None:
         if _last_now_playing != current_np:
             _last_now_playing = current_np
             await ws_manager.broadcast("player:now-playing", current_np)
+
+        # Check music status
+        try:
+            current_music = get_music_status()
+        except Exception:
+            current_music = None
+        if _last_music_status != current_music:
+            _last_music_status = current_music
+            await ws_manager.broadcast("music:status", current_music)
+
+        # Check voice status
+        try:
+            current_voice = get_bot_voice_status()
+        except Exception:
+            current_voice = {"connected": False}
+        if _last_voice_status != current_voice:
+            _last_voice_status = current_voice
+            await ws_manager.broadcast("voice:state", current_voice)
 
 
 async def _broadcast_voice_state(guild_id: str, connected: bool, channel_id: str | None = None) -> None:

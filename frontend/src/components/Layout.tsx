@@ -1,11 +1,9 @@
 import { Link, useLocation } from 'react-router-dom'
 import { LayoutDashboard, Users, Settings, Tv, Bookmark, Volume2, Music, PlayCircle, LogOut, User } from 'lucide-react'
-import type { BotStatus } from '../types'
 import { useAuth } from '../context/AuthContext'
 
 interface LayoutProps {
   children: React.ReactNode
-  status: BotStatus | null
 }
 
 const SidebarItem = ({ to, icon: Icon, label }: { to: string; icon: typeof LayoutDashboard; label: string }) => {
@@ -27,7 +25,7 @@ const SidebarItem = ({ to, icon: Icon, label }: { to: string; icon: typeof Layou
   )
 }
 
-export function Layout({ children, status: _status }: LayoutProps) {
+export function Layout({ children }: LayoutProps) {
   const { user, logout } = useAuth()
 
   return (

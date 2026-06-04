@@ -5,6 +5,7 @@ import { Input } from './ui/input'
 import { Dropdown } from './ui/dropdown'
 import { useApi } from '../hooks/useApi'
 import { useGuild } from '../contexts/GuildContext'
+import { useWebSocketContext } from '../context/WebSocketContext'
 
 interface TopNavigationProps {
   onNavigate?: (page: string) => void
@@ -13,27 +14,11 @@ interface TopNavigationProps {
 export default function TopNavigation({ onNavigate }: TopNavigationProps) {
   const api = useApi()
   const { selectedGuild, selectedVoiceChannel, setSelectedGuild, setSelectedVoiceChannel } = useGuild()
-  const [botStatus, setBotStatus] = useState<any>(null)
+  const { botStatus, voiceState } = useWebSocketContext()
   const [guilds, setGuilds] = useState<Array<{ id: string; name: string }>>([])
   const [voiceChannels, setVoiceChannels] = useState<Array<{ id: string; name: string }>>([])
-  const [voiceStatus, setVoiceStatus] = useState<any>(null)
   const [commandInput, setCommandInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-
-  // Load bot status
-  useEffect(() => {
-    const loadStatus = async () => {
-      try {
-        const status = await api.fetchStatus()
-        setBotStatus(status)
-      } catch (error) {
-        console.error('Failed to load bot status:', error)
-      }
-    }
-    loadStatus()
-    const interval = setInterval(loadStatus, 5000) // Update every 5 seconds
-    return () => clearInterval(interval)
-  }, [])
 
   // Load guilds
   useEffect(() => {
@@ -87,23 +72,6 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
     loadVoiceChannels()
   }, [selectedGuild, selectedVoiceChannel, setSelectedVoiceChannel])
 
-  // Load voice status
-  useEffect(() => {
-    if (!selectedGuild) return
-
-    const loadVoiceStatus = async () => {
-      try {
-        const status = await api.fetchVoiceStatus()
-        setVoiceStatus(status)
-      } catch (error) {
-        console.error('Failed to load voice status:', error)
-      }
-    }
-    loadVoiceStatus()
-    const interval = setInterval(loadVoiceStatus, 3000) // Update every 3 seconds
-    return () => clearInterval(interval)
-  }, [selectedGuild])
-
   const handleReloadBot = async () => {
     setIsLoading(true)
     try {
@@ -119,11 +87,12 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
     if (!selectedGuild || !selectedVoiceChannel) return
 
     try {
-      if (voiceStatus?.connected) {
+      if (voiceState?.connected) {
         // Check if we need to switch or leave
-        const currentGuildId = voiceStatus.guild_id
-        const currentChannelId = voiceStatus.channel_id
-        
+        const currentGuildId = voiceState.guild_id
+        const currentChannelId = voiceState.channel_id
+        if (!currentGuildId) return
+
         if (currentGuildId !== selectedGuild || currentChannelId !== selectedVoiceChannel) {
           // Switch to new server/channel
           await api.leaveVoiceChannel(currentGuildId)
@@ -142,8 +111,8 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
   }
 
   const getVoiceButtonState = () => {
-    if (!voiceStatus?.connected) return 'join'
-    if (voiceStatus?.guild_id !== selectedGuild || voiceStatus?.channel_id !== selectedVoiceChannel) return 'switch'
+    if (!voiceState?.connected) return 'join'
+    if (voiceState?.guild_id !== selectedGuild || voiceState?.channel_id !== selectedVoiceChannel) return 'switch'
     return 'leave'
   }
 
@@ -225,9 +194,7 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
               <div className="relative">
                 <img
                   src={
-                    botStatus.avatar_url ||
-                    botStatus?.bot?.avatar_url ||
-                    `https://cdn.discordapp.com/avatars/${botStatus.user_id}/${botStatus.avatar}.png`
+                    botStatus?.bot?.avatar_url || '/discord-avatar.png'
                   }
                   onError={(e) => {
                     e.currentTarget.src = '/discord-avatar.png'
@@ -240,9 +207,9 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
                 }`} />
               </div>
               <div>
-                <div className="font-semibold text-slate-200 text-base">{botStatus?.bot?.name || botStatus.username || 'Bot Name'}</div>
+                <div className="font-semibold text-slate-200 text-base">{botStatus?.bot?.name || 'Bot Name'}</div>
                 <div className="text-xs text-slate-400 truncate max-w-32">
-                  {botStatus?.bot?.activity?.name || botStatus?.bot?.activity?.details || botStatus?.bot?.activity?.state || 'Idle'}
+                  {botStatus?.status || 'Idle'}
                 </div>
               </div>
             </div>
