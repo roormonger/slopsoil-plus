@@ -291,6 +291,7 @@ def get_bot_status() -> dict[str, Any]:
         }
 
     uptime = _get_uptime_seconds() if running else 0
+    latency = round(_bot_instance.latency * 1000, 1) if _bot_instance and hasattr(_bot_instance, 'latency') else 0
     return {
         "status": status,
         "running": running,
@@ -299,6 +300,7 @@ def get_bot_status() -> dict[str, Any]:
         "streaming_count": streaming_count,
         "guild_count": guild_count,
         "uptime": uptime,
+        "latency": latency,
         "bot": bot_info,
     }
 

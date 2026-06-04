@@ -19,7 +19,7 @@ export function useApi() {
 
   const fetchCommandStats = useCallback(async (): Promise<CommandStats | null> => {
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('slopsoil_token')
       const res = await fetch(`${API_URL}/stats`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       })

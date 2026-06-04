@@ -602,7 +602,7 @@ def log_command(
 
     Returns the inserted row id.
     """
-    with get_db() as conn:
+    with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
@@ -662,7 +662,7 @@ def get_command_history(
     user_id: str | None = None,
 ) -> list[dict]:
     """Get paginated command history, optionally filtered."""
-    with get_db() as conn:
+    with get_connection() as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -689,7 +689,7 @@ def get_command_history(
 
 def get_command_stats(days: int = 30) -> dict[str, Any]:
     """Get aggregated command statistics for the given time window."""
-    with get_db() as conn:
+    with get_connection() as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 

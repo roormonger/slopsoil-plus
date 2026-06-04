@@ -68,6 +68,7 @@ export interface BotStatus {
   streaming_count: number
   guild_count: number
   uptime: number
+  latency?: number
   bot: BotInfo | null
 }
 

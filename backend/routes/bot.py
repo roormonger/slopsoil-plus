@@ -36,6 +36,7 @@ class BotStatusResponse(BaseModel):
     streaming_count: int
     guild_count: int
     voice_channels: int = 0
+    latency: float = 0
     bot: BotInfo | None = None
 
 

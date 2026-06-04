@@ -1,23 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Loader2, Radio, Users, Server, Zap, Music2, Video, Clock, MessageSquare, Globe, Trophy, Settings, Activity } from 'lucide-react'
+import { Loader2, Radio, Users, Zap, Music2, Video, MessageSquare, Globe, Trophy, Settings, Activity, Signal, Tv, Bookmark } from 'lucide-react'
 import { Badge } from '../components/ui/badge'
 import { useApi } from '../hooks/useApi'
 import { useWebSocketContext } from '../context/WebSocketContext'
 import type { BotStatus, NowPlaying, MusicStatus, CommandStats, Config } from '../types'
-
-function formatUptime(seconds: number): string {
-  if (seconds === 0) return 'Offline'
-  const d = Math.floor(seconds / 86400)
-  const h = Math.floor((seconds % 86400) / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  const parts: string[] = []
-  if (d > 0) parts.push(`${d}d`)
-  if (h > 0) parts.push(`${h}h`)
-  if (m > 0) parts.push(`${m}m`)
-  if (s > 0 && d === 0) parts.push(`${s}s`)
-  return parts.join(' ') || '0s'
-}
 
 export function Dashboard() {
   const api = useApi()
@@ -27,24 +13,30 @@ export function Dashboard() {
   const [musicStatus, setMusicStatus] = useState<MusicStatus | null>(null)
   const [commandStats, setCommandStats] = useState<CommandStats | null>(null)
   const [config, setConfig] = useState<Config | null>(null)
+  const [iptvSources, setIptvSources] = useState<Array<{ name: string; url: string; enabled: boolean }>>([])
+  const [bookmarks, setBookmarks] = useState<Array<{ id: number; name: string; url: string; enabled: boolean }>>([])
   const [loading, setLoading] = useState(true)
 
   // Load initial data once on mount
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
-      const [statusData, nowPlayingData, musicStatusData, cmdStatsData, configData] = await Promise.all([
+      const [statusData, nowPlayingData, musicStatusData, cmdStatsData, configData, iptvData, bmData] = await Promise.all([
         api.fetchStatus(),
         api.fetchNowPlaying(),
         api.fetchMusicStatus(),
         api.fetchCommandStats(),
         api.fetchConfig(),
+        api.fetchIptvSources(),
+        api.fetchBookmarks(),
       ])
       if (statusData) setStatus(statusData)
       if (nowPlayingData) setNowPlaying(nowPlayingData)
       if (musicStatusData) setMusicStatus(musicStatusData)
       if (cmdStatsData) setCommandStats(cmdStatsData)
       if (configData) setConfig(configData.settings)
+      if (iptvData) setIptvSources(iptvData)
+      if (bmData) setBookmarks(bmData)
       setLoading(false)
     }
     loadData()
@@ -63,21 +55,6 @@ export function Dashboard() {
   useEffect(() => {
     if (wsMusicStatus) setMusicStatus(wsMusicStatus)
   }, [wsMusicStatus])
-
-  const getStatusBadge = () => {
-    switch (status?.status) {
-      case 'online':
-      case 'running':
-        return <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30">Online</Badge>
-      case 'offline':
-      case 'stopped':
-        return <Badge variant="destructive">Offline</Badge>
-      case 'pending_reload':
-        return <Badge variant="secondary">Reloading...</Badge>
-      default:
-        return <Badge variant="outline">Unknown</Badge>
-    }
-  }
 
   const chatCommands = commandStats?.by_source?.discord || 0
   const webCommands = commandStats?.by_source?.web || 0
@@ -115,31 +92,31 @@ export function Dashboard() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-px bg-white/5 rounded-xl overflow-hidden">
-          {/* Uptime */}
+          {/* Bot Latency */}
           <div className="bg-slate-900/40 p-4 hover:bg-slate-800/40 transition-colors">
             <div className="flex items-center gap-2 mb-2">
-              <Clock className="w-3.5 h-3.5 text-primary" />
-              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Uptime</span>
+              <Signal className="w-3.5 h-3.5 text-primary" />
+              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Bot Latency</span>
             </div>
-            <div className="text-lg font-semibold text-slate-200">{formatUptime(status?.uptime || 0)}</div>
+            <div className="text-lg font-semibold text-slate-200">{status?.latency ? `${status.latency}ms` : '—'}</div>
           </div>
 
-          {/* Status */}
+          {/* IPTV Sources */}
           <div className="bg-slate-900/40 p-4 hover:bg-slate-800/40 transition-colors">
             <div className="flex items-center gap-2 mb-2">
-              <div className={`w-3 h-3 rounded-full ${status?.running ? 'bg-emerald-400 status-pulse' : 'bg-red-400'}`} />
-              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Status</span>
+              <Tv className="w-3.5 h-3.5 text-primary" />
+              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">IPTV Sources</span>
             </div>
-            <div className="text-lg font-semibold">{getStatusBadge()}</div>
+            <div className="text-lg font-semibold text-slate-200">{iptvSources.length || 0}</div>
           </div>
 
-          {/* Servers */}
+          {/* Bookmarks */}
           <div className="bg-slate-900/40 p-4 hover:bg-slate-800/40 transition-colors">
             <div className="flex items-center gap-2 mb-2">
-              <Server className="w-3.5 h-3.5 text-primary" />
-              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Servers</span>
+              <Bookmark className="w-3.5 h-3.5 text-primary" />
+              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Bookmarks</span>
             </div>
-            <div className="text-lg font-semibold text-slate-200">{status?.guild_count || 0}</div>
+            <div className="text-lg font-semibold text-slate-200">{bookmarks.length || 0}</div>
           </div>
 
           {/* Users */}
