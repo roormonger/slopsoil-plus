@@ -15,12 +15,23 @@ class ConnectionManager:
     def __init__(self) -> None:
         self.connections: set[WebSocket] = set()
         self._lock = asyncio.Lock()
+        self._last_events: dict[str, dict | None] = {}
 
     async def connect(self, websocket: WebSocket) -> None:
         await websocket.accept()
         async with self._lock:
             self.connections.add(websocket)
         log.info("WebSocket client connected (%d total)", len(self.connections))
+
+        # Send last known state for each event type to new client
+        for event_type, payload in self._last_events.items():
+            if payload is not None:
+                try:
+                    await websocket.send_text(
+                        json.dumps({"type": event_type, "data": payload})
+                    )
+                except Exception:
+                    pass
 
     async def disconnect(self, websocket: WebSocket) -> None:
         async with self._lock:
@@ -29,6 +40,8 @@ class ConnectionManager:
 
     async def broadcast(self, event_type: str, payload: dict | None = None) -> None:
         """Broadcast an event to all connected WebSocket clients."""
+        if payload is not None:
+            self._last_events[event_type] = payload
         message = json.dumps({"type": event_type, "data": payload or {}})
         dead: set[WebSocket] = set()
 

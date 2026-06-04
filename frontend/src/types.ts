@@ -67,7 +67,20 @@ export interface BotStatus {
   user_count: number
   streaming_count: number
   guild_count: number
+  uptime: number
   bot: BotInfo | null
+}
+
+export interface CommandStats {
+  total: number
+  by_source: Record<string, number>
+  by_category: {
+    voice: number
+    video: number
+    music: number
+    other: number
+  }
+  by_user: Array<{ user_id: string; username: string; count: number }>
 }
 
 export interface NowPlaying {

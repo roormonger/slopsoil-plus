@@ -32,6 +32,15 @@ log = logging.getLogger(__name__)
 _bot_instance: SlopSoil | None = None
 _bot_task: asyncio.Task | None = None
 _bot_should_stop: bool = False
+_bot_start_time: float | None = None
+
+
+def _get_uptime_seconds() -> int:
+    """Get bot uptime in seconds."""
+    if _bot_start_time is None:
+        return 0
+    import time
+    return int(time.time() - _bot_start_time)
 
 
 def _load_config_from_db() -> dict[str, Any]:
@@ -158,6 +167,9 @@ async def _run_bot(token: str, stored_avatar_url: str = "") -> None:
         await _bot_instance.start(token)
         # Wait for bot to be ready before checking avatar
         await _bot_instance.wait_until_ready()
+        # Mark start time for uptime tracking
+        global _bot_start_time
+        _bot_start_time = __import__("time").time()
         # Bot is ready - fetch avatar from user object
         if _bot_instance.user:
             has_avatar = _bot_instance.user.avatar is not None
@@ -182,7 +194,7 @@ async def stop_bot() -> bool:
 
     Returns True if stopped successfully.
     """
-    global _bot_instance, _bot_task, _bot_should_stop
+    global _bot_instance, _bot_task, _bot_should_stop, _bot_start_time
 
     if _bot_instance is None:
         return True
@@ -204,6 +216,7 @@ async def stop_bot() -> bool:
 
     _bot_instance = None
     _bot_task = None
+    _bot_start_time = None
     log.info("Discord bot stopped")
     return True
 
@@ -277,6 +290,7 @@ def get_bot_status() -> dict[str, Any]:
             "avatar_url": config["avatar_url"],
         }
 
+    uptime = _get_uptime_seconds() if running else 0
     return {
         "status": status,
         "running": running,
@@ -284,6 +298,7 @@ def get_bot_status() -> dict[str, Any]:
         "user_count": len(config["allowed_ids"]),
         "streaming_count": streaming_count,
         "guild_count": guild_count,
+        "uptime": uptime,
         "bot": bot_info,
     }
 
@@ -718,12 +733,11 @@ async def _ws_state_watcher() -> None:
     while True:
         await asyncio.sleep(3)
         if _bot_instance is None:
-            # Bot offline — broadcast if status changed
-            offline_status = {
-                "online": False,
-                "username": "",
-                "avatar_url": "",
-            }
+            # Bot offline — broadcast same format as get_bot_status()
+            try:
+                offline_status = get_bot_status()
+            except Exception:
+                continue
             if _last_bot_status != offline_status:
                 _last_bot_status = offline_status
                 await ws_manager.broadcast("bot:status", offline_status)

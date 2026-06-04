@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import type { Config, User, BotStatus, NowPlaying, IptvSource, Bookmark, Guild, VoiceChannel, VoiceStatus, CommandResult, MusicStatus } from '../types'
+import type { Config, User, BotStatus, NowPlaying, IptvSource, Bookmark, Guild, VoiceChannel, VoiceStatus, CommandResult, MusicStatus, CommandStats } from '../types'
 
 const API_URL = '/api'
 
@@ -16,6 +16,20 @@ export function useApi() {
       setTimeout(() => setSuccess(null), 3000)
     }
   }, [])
+
+  const fetchCommandStats = useCallback(async (): Promise<CommandStats | null> => {
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch(`${API_URL}/stats`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+      if (!res.ok) throw new Error('Failed to fetch command stats')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to fetch command stats')
+      return null
+    }
+  }, [showMessage])
 
   const fetchConfig = useCallback(async (): Promise<{ settings: Config; settingsEnv: Record<string, {value: string, from_env: boolean}>; users: User[] } | null> => {
     try {
@@ -435,6 +449,7 @@ export function useApi() {
     toggleBookmark,
     deleteBookmark,
     fetchDiscordUser,
+    fetchCommandStats,
     fetchMusicStatus,
     playMusic,
     controlMusic,

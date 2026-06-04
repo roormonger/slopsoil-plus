@@ -6,6 +6,7 @@ import { Dropdown } from './ui/dropdown'
 import { useApi } from '../hooks/useApi'
 import { useGuild } from '../contexts/GuildContext'
 import { useWebSocketContext } from '../context/WebSocketContext'
+import type { BotStatus } from '../types'
 
 interface TopNavigationProps {
   onNavigate?: (page: string) => void
@@ -14,11 +15,24 @@ interface TopNavigationProps {
 export default function TopNavigation({ onNavigate }: TopNavigationProps) {
   const api = useApi()
   const { selectedGuild, selectedVoiceChannel, setSelectedGuild, setSelectedVoiceChannel } = useGuild()
-  const { botStatus, voiceState } = useWebSocketContext()
+  const { botStatus: wsBotStatus, voiceState } = useWebSocketContext()
   const [guilds, setGuilds] = useState<Array<{ id: string; name: string }>>([])
   const [voiceChannels, setVoiceChannels] = useState<Array<{ id: string; name: string }>>([])
   const [commandInput, setCommandInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [initialBotStatus, setInitialBotStatus] = useState<BotStatus | null>(null)
+
+  // Load initial bot status via HTTP (WS only broadcasts on change, so new clients miss initial state)
+  useEffect(() => {
+    const loadStatus = async () => {
+      const status = await api.fetchStatus()
+      if (status) setInitialBotStatus(status)
+    }
+    loadStatus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const botStatus = wsBotStatus || initialBotStatus
 
   // Load guilds
   useEffect(() => {
