@@ -13,6 +13,7 @@ services:
     volumes:
       - slopsoil-data:/root/.local/share/slopsoil
       - ./data:/app/data
+      - ./soundboard:/app/soundboard
     environment:
       - PORT=3000
     # GPU device for hardware acceleration (Linux only)

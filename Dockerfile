@@ -40,8 +40,8 @@ RUN rm -rf ./frontend/dist
 # Copy built frontend from stage 1
 COPY --from=frontend-builder /build/dist ./frontend/dist
 
-# Create data directory for SQLite
-RUN mkdir -p /app/data
+# Create data and soundboard directories
+RUN mkdir -p /app/data /app/soundboard/system /app/soundboard/users
 
 # Expose web admin port
 EXPOSE 6000

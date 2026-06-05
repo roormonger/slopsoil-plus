@@ -24,6 +24,7 @@ export function Settings() {
     stream_video_bitrate: '6000k',
     stream_packet_pace: 0,
     stream_av_sync_ms: 0,
+    soundboard_user_quota: 10,
   })
   const [settingsEnv, setSettingsEnv] = useState<Record<string, {value: string, from_env: boolean}>>({})
   const [showToken, setShowToken] = useState(false)
@@ -146,6 +147,28 @@ export function Settings() {
                 disabled={isEnvControlled('command_prefix')}
               />
               <p className="text-xs text-slate-500">Single special character only (! $ % ^ & * . , ; : - _ ~ ` + = ( ) [ ] | \ /)</p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-400 flex items-center gap-2">
+                Soundboard Upload Quota
+                {isEnvControlled('soundboard_user_quota') && (
+                  <span className="text-xs text-amber-400 flex items-center gap-1" title="Controlled by SOUNDBOARD_USER_QUOTA environment variable">
+                    <Lock className="h-3 w-3" />
+                    (env)
+                  </span>
+                )}
+              </label>
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                value={config.soundboard_user_quota}
+                onChange={(e) => setConfig({ ...config, soundboard_user_quota: Math.min(100, Math.max(1, parseInt(e.target.value) || 10)) })}
+                className="max-w-[120px] glass-input text-slate-200"
+                disabled={isEnvControlled('soundboard_user_quota')}
+              />
+              <p className="text-xs text-slate-500">Max personal soundboard files per user (1-100)</p>
             </div>
 
             <div className="space-y-2">

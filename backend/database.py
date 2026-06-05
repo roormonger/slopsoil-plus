@@ -91,6 +91,7 @@ DEFAULT_SETTINGS = {
     "stream_video_bitrate": "6000k",
     "stream_packet_pace": "0",
     "stream_av_sync_ms": "0",
+    "soundboard_user_quota": "10",
     "_config_modified_at": "",  # Internal timestamp for reload notifications
 }
 

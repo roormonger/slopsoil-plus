@@ -20,6 +20,13 @@ export interface Config {
   stream_video_bitrate: string
   stream_packet_pace: number
   stream_av_sync_ms: number
+  soundboard_user_quota: number
+}
+
+export interface Sound {
+  name: string
+  filename: string
+  path: string
 }
 
 // New interface for settings with source info from API
@@ -40,6 +47,7 @@ export interface SettingsWithEnv {
   stream_video_bitrate: SettingInfo
   stream_packet_pace: SettingInfo
   stream_av_sync_ms: SettingInfo
+  soundboard_user_quota: SettingInfo
 }
 
 export interface User {

@@ -721,6 +721,48 @@ async def execute_bot_command(
         return {"success": False, "message": f"Error: {str(e)}"}
 
 
+def play_soundboard(filepath: str, guild_id: int) -> dict[str, Any]:
+    """Play a soundboard clip in the bot's voice channel.
+
+    Args:
+        filepath: Absolute path to the audio file.
+        guild_id: Discord guild ID.
+
+    Returns:
+        Dict with success flag and message.
+    """
+    if _bot_instance is None:
+        return {"success": False, "message": "Bot is not running"}
+
+    guild = _bot_instance.get_guild(guild_id)
+    if not guild:
+        return {"success": False, "message": "Guild not found"}
+
+    vc = guild.voice_client
+    if not vc or not vc.is_connected():
+        return {"success": False, "message": "Bot is not in a voice channel"}
+
+    # Stop any current playback
+    if vc.is_playing():
+        vc.stop()
+
+    # Cancel any active stream
+    from cogs.stream import cancel_stream
+    cancel_stream(_bot_instance, guild_id)
+
+    # Play the sound
+    audio = discord.FFmpegPCMAudio(filepath)
+    source = discord.PCMVolumeTransformer(audio, volume=1.0)
+
+    def _after(error: Exception | None):
+        if error:
+            log.error("Soundboard playback error: %s", error)
+
+    vc.play(source, after=_after)
+    log.info("Playing soundboard file %s in guild %s", filepath, guild_id)
+    return {"success": True, "message": "Playing sound"}
+
+
 # WebSocket broadcast helpers
 
 _last_now_playing: dict | None = None

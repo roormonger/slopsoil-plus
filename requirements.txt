@@ -13,3 +13,4 @@ bcrypt
 cryptography
 httpx
 python-jose[cryptography]
+python-multipart

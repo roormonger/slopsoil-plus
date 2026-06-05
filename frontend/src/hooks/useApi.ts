@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import type { Config, User, BotStatus, NowPlaying, IptvSource, Bookmark, Guild, VoiceChannel, VoiceStatus, CommandResult, MusicStatus, CommandStats } from '../types'
+import type { Config, User, BotStatus, NowPlaying, IptvSource, Bookmark, Sound, Guild, VoiceChannel, VoiceStatus, CommandResult, MusicStatus, CommandStats } from '../types'
 
 const API_URL = '/api'
 
@@ -425,6 +425,129 @@ export function useApi() {
     }
   }, [showMessage])
 
+  const fetchSystemSounds = useCallback(async (): Promise<Sound[] | null> => {
+    try {
+      const res = await fetch(`${API_URL}/soundboard/system`)
+      if (!res.ok) throw new Error('Failed to fetch system sounds')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to fetch system sounds')
+      return null
+    }
+  }, [showMessage])
+
+  const fetchMySounds = useCallback(async (): Promise<Sound[] | null> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const res = await fetch(`${API_URL}/soundboard/mine`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+      if (!res.ok) throw new Error('Failed to fetch personal sounds')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to fetch personal sounds')
+      return null
+    }
+  }, [showMessage])
+
+  const uploadSystemSound = useCallback(async (file: File): Promise<boolean> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch(`${API_URL}/soundboard/system`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: formData,
+      })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.detail || 'Failed to upload system sound')
+      }
+      showMessage('System sound uploaded', 'success')
+      return true
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to upload system sound')
+      return false
+    }
+  }, [showMessage])
+
+  const uploadPersonalSound = useCallback(async (file: File): Promise<boolean> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch(`${API_URL}/soundboard/mine`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: formData,
+      })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.detail || 'Failed to upload personal sound')
+      }
+      showMessage('Personal sound uploaded', 'success')
+      return true
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to upload personal sound')
+      return false
+    }
+  }, [showMessage])
+
+  const deleteSystemSound = useCallback(async (filename: string): Promise<boolean> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const res = await fetch(`${API_URL}/soundboard/system/${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+      if (!res.ok) throw new Error('Failed to delete system sound')
+      showMessage('System sound deleted', 'success')
+      return true
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to delete system sound')
+      return false
+    }
+  }, [showMessage])
+
+  const deletePersonalSound = useCallback(async (filename: string): Promise<boolean> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const res = await fetch(`${API_URL}/soundboard/mine/${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+      if (!res.ok) throw new Error('Failed to delete personal sound')
+      showMessage('Personal sound deleted', 'success')
+      return true
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to delete personal sound')
+      return false
+    }
+  }, [showMessage])
+
+  const playSound = useCallback(async (filename: string, type: 'system' | 'personal', guildId: string): Promise<boolean> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const res = await fetch(`${API_URL}/soundboard/play`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ filename, type, guild_id: guildId }),
+      })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.detail || 'Failed to play sound')
+      }
+      return true
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to play sound')
+      return false
+    }
+  }, [showMessage])
+
   return {
     error,
     success,
@@ -459,5 +582,12 @@ export function useApi() {
     get,
     post,
     delete: deleteRequest,
+    fetchSystemSounds,
+    fetchMySounds,
+    uploadSystemSound,
+    uploadPersonalSound,
+    deleteSystemSound,
+    deletePersonalSound,
+    playSound,
   }
 }

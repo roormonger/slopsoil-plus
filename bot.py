@@ -77,6 +77,9 @@ class SlopSoil(commands.Bot):
             await self.load_extension(ext)
             log.info("loaded extension: %s", ext)
 
+        await self.load_extension("cogs.soundboard")
+        log.info("loaded extension: cogs.soundboard")
+
         await self.load_extension("cogs.jellyfin")
         jf_url = os.environ.get("JELLYFIN_URL")
         if jf_url:
