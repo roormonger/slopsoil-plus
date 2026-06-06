@@ -39,18 +39,21 @@ class MusicPlayRequest(BaseModel):
     """Request model for playing music."""
     guild_id: str = Field(..., min_length=1)
     query: str = Field(..., min_length=1)
+    channel_id: str | None = None
 
 
 class MusicControlRequest(BaseModel):
     """Request model for music control."""
     guild_id: str = Field(..., min_length=1)
     action: str = Field(..., pattern="^(stop|skip|back|pause|resume)$")
+    channel_id: str | None = None
 
 
 class MusicVolumeRequest(BaseModel):
     """Request model for setting volume."""
     guild_id: str = Field(..., min_length=1)
     volume: int = Field(..., ge=0, le=100)
+    channel_id: str | None = None
 
 
 class MusicActionResponse(BaseModel):
@@ -135,19 +138,19 @@ async def get_music_status_endpoint() -> MusicStatusResponse:
 @router.post("/play", response_model=MusicActionResponse)
 async def play_music_endpoint(request: MusicPlayRequest) -> MusicActionResponse:
     """Play or queue music in a guild."""
-    result = await execute_bot_command(request.guild_id, "music", request.query)
+    result = await execute_bot_command(request.guild_id, "music", request.query, channel_id=request.channel_id)
     return MusicActionResponse(**result)
 
 
 @router.post("/control", response_model=MusicActionResponse)
 async def control_music_endpoint(request: MusicControlRequest) -> MusicActionResponse:
     """Control music playback (stop, skip, back, pause, resume)."""
-    result = await execute_bot_command(request.guild_id, f"music {request.action}", "")
+    result = await execute_bot_command(request.guild_id, f"music {request.action}", "", channel_id=request.channel_id)
     return MusicActionResponse(**result)
 
 
 @router.post("/volume", response_model=MusicActionResponse)
 async def set_music_volume_endpoint(request: MusicVolumeRequest) -> MusicActionResponse:
     """Set music volume (0-100)."""
-    result = await execute_bot_command(request.guild_id, "music volume", str(request.volume))
+    result = await execute_bot_command(request.guild_id, "music volume", str(request.volume), channel_id=request.channel_id)
     return MusicActionResponse(**result)

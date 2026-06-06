@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
-import { Loader2, Trash2 } from 'lucide-react'
+import { Loader2, Play, Trash2 } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useApi } from '../hooks/useApi'
+import { useGuild } from '../contexts/GuildContext'
 import type { Bookmark } from '../types'
 
 export function Bookmarks() {
   const api = useApi()
+  const { selectedGuild, selectedVoiceChannel } = useGuild()
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -29,9 +31,16 @@ export function Bookmarks() {
     init()
   }, [])
 
-  const handleToggle = async (id: number, enabled: boolean) => {
-    const success = await api.toggleBookmark(id, !enabled)
-    if (success) await loadBookmarks()
+  const handlePlay = async (name: string) => {
+    if (!selectedGuild) {
+      api.showMessage('Please select a guild from the top navigation first', 'error')
+      return
+    }
+    if (!selectedVoiceChannel) {
+      api.showMessage('Please select a voice channel from the top navigation first', 'error')
+      return
+    }
+    await api.executeCommand(selectedGuild, 'play', name, selectedVoiceChannel)
   }
 
   const handleDelete = async (id: number) => {
@@ -89,7 +98,7 @@ export function Bookmarks() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6 h-[calc(100vh-8rem)]">
       {/* Error/Success Messages */}
       {api.error && (
         <div className="p-4 glass-card border-red-400/30 text-red-300 rounded-xl">{api.error}</div>
@@ -98,7 +107,7 @@ export function Bookmarks() {
         <div className="p-4 glass-card border-emerald-400/30 text-emerald-300 rounded-xl">{api.success}</div>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between shrink-0">
         <div>
           <h2 className="text-3xl font-bold gradient-text mb-2">Bookmarks</h2>
           <p className="text-slate-400">Manage direct stream and URL bookmarks for the !play command</p>
@@ -108,8 +117,8 @@ export function Bookmarks() {
         </Button>
       </div>
 
-      <div className="glass-card rounded-2xl overflow-hidden">
-        <div className="divide-y divide-white/5">
+      <div className="glass-card rounded-2xl overflow-hidden flex-1 min-h-0">
+        <div className="divide-y divide-white/5 h-full overflow-y-auto custom-scrollbar">
           {bookmarks.length === 0 ? (
             <div className="p-8 text-center text-slate-400">No bookmarks configured</div>
           ) : (
@@ -120,17 +129,20 @@ export function Bookmarks() {
                   <p className="text-sm text-slate-400 truncate">{bm.url}</p>
                 </div>
                 <div className="flex items-center gap-3 ml-4">
-                  <label className="flex items-center gap-2 text-sm cursor-pointer whitespace-nowrap">
-                    <input
-                      type="checkbox"
-                      checked={bm.enabled}
-                      onChange={() => handleToggle(bm.id, bm.enabled)}
-                      className="rounded border-white/20 h-4 w-4 bg-transparent"
-                    />
-                    <span className={bm.enabled ? 'text-emerald-400' : 'text-slate-400'}>
-                      {bm.enabled ? 'Enabled' : 'Disabled'}
-                    </span>
-                  </label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handlePlay(bm.name)}
+                    disabled={!selectedGuild || !selectedVoiceChannel}
+                    className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+                    title={
+                      !selectedGuild ? 'Select a guild first' :
+                      !selectedVoiceChannel ? 'Select a voice channel first' :
+                      'Play'
+                    }
+                  >
+                    <Play className="h-4 w-4" />
+                  </Button>
                   <Button variant="ghost" size="sm" onClick={() => handleDelete(bm.id)} className="text-red-400 hover:text-red-300 hover:bg-red-500/10">
                     <Trash2 className="h-4 w-4" />
                   </Button>

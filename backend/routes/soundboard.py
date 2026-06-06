@@ -38,6 +38,7 @@ class PlayRequest(BaseModel):
     filename: str
     type: str  # "system" or "personal"
     guild_id: str | None = None
+    channel_id: str | None = None
 
 
 class PlayResponse(BaseModel):
@@ -176,7 +177,7 @@ async def play_sound_endpoint(
         raise HTTPException(status_code=400, detail="guild_id is required")
 
     try:
-        result = play_soundboard(str(filepath), int(request.guild_id))
+        result = await play_soundboard(str(filepath), int(request.guild_id), request.channel_id)
         return PlayResponse(success=result.get("success", False), message=result.get("message", ""))
     except Exception as exc:
         log.error("Failed to play soundboard: %s", exc)

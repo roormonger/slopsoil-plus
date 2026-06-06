@@ -368,7 +368,7 @@ def add_bookmark(name: str, url: str) -> None:
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO bookmarks (name, url, enabled) VALUES (?, ?, 1)",
+            "INSERT INTO bookmarks (name, url) VALUES (?, ?)",
             (name, url),
         )
 
@@ -377,36 +377,9 @@ def get_bookmarks() -> list[dict[str, Any]]:
     """Get all bookmarks."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, name, url, enabled FROM bookmarks ORDER BY name")
-        rows = cursor.fetchall()
-        return [
-            {
-                "id": row["id"],
-                "name": row["name"],
-                "url": row["url"],
-                "enabled": bool(row["enabled"]),
-            }
-            for row in rows
-        ]
-
-
-def get_enabled_bookmarks() -> list[dict[str, Any]]:
-    """Get only enabled bookmarks."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, name, url FROM bookmarks WHERE enabled = 1 ORDER BY name")
+        cursor.execute("SELECT id, name, url FROM bookmarks ORDER BY name")
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
-
-
-def set_bookmark_enabled(bookmark_id: int, enabled: bool) -> None:
-    """Enable or disable a bookmark."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE bookmarks SET enabled = ? WHERE id = ?",
-            (1 if enabled else 0, bookmark_id),
-        )
 
 
 def delete_bookmark(bookmark_id: int) -> bool:

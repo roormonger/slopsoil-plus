@@ -565,6 +565,7 @@ async def execute_bot_command(
     command: str,
     args: str = "",
     source_user: dict[str, str] | None = None,
+    channel_id: str | None = None,
 ) -> dict[str, Any]:
     """Execute a bot command programmatically.
 
@@ -572,6 +573,7 @@ async def execute_bot_command(
         guild_id: The guild to execute the command in
         command: The command name (e.g., 'play', 'stop', 'channels')
         args: Command arguments
+        channel_id: Optional voice channel ID to join if bot is not connected.
 
     Returns:
         Dict with success status and message/result
@@ -582,6 +584,22 @@ async def execute_bot_command(
     guild = _bot_instance.get_guild(int(guild_id))
     if guild is None:
         return {"success": False, "message": "Guild not found"}
+
+    # Auto-join voice channel if provided and bot is not in the right channel
+    if channel_id:
+        target_channel = guild.get_channel(int(channel_id))
+        if target_channel and isinstance(target_channel, discord.VoiceChannel):
+            vc = guild.voice_client
+            if not vc or not vc.is_connected():
+                join_result = await join_voice_channel(guild_id, channel_id)
+                if not join_result["success"]:
+                    return {"success": False, "message": join_result["message"]}
+            elif vc.channel and vc.channel.id != int(channel_id):
+                try:
+                    await vc.move_to(target_channel)
+                except Exception as e:
+                    log.error("Failed to move voice channel: %s", e)
+                    return {"success": False, "message": f"Failed to move voice channel: {e}"}
 
     # Get the command
     cmd = _bot_instance.get_command(command)
@@ -721,12 +739,13 @@ async def execute_bot_command(
         return {"success": False, "message": f"Error: {str(e)}"}
 
 
-def play_soundboard(filepath: str, guild_id: int) -> dict[str, Any]:
+async def play_soundboard(filepath: str, guild_id: int, channel_id: str | None = None) -> dict[str, Any]:
     """Play a soundboard clip in the bot's voice channel.
 
     Args:
         filepath: Absolute path to the audio file.
         guild_id: Discord guild ID.
+        channel_id: Optional voice channel ID to join if not already connected.
 
     Returns:
         Dict with success flag and message.
@@ -740,7 +759,13 @@ def play_soundboard(filepath: str, guild_id: int) -> dict[str, Any]:
 
     vc = guild.voice_client
     if not vc or not vc.is_connected():
-        return {"success": False, "message": "Bot is not in a voice channel"}
+        if channel_id:
+            join_result = await join_voice_channel(str(guild_id), channel_id)
+            if not join_result["success"]:
+                return {"success": False, "message": join_result["message"]}
+            vc = guild.voice_client
+        if not vc or not vc.is_connected():
+            return {"success": False, "message": "Bot is not in a voice channel"}
 
     # Stop any current playback
     if vc.is_playing():

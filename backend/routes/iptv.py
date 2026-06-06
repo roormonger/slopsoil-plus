@@ -23,6 +23,14 @@ class IPTVSourceResponse(BaseModel):
     channel_count: int
 
 
+class IPTVChannelResponse(BaseModel):
+    """Response model for an IPTV channel."""
+    name: str
+    tvg_id: str | None = None
+    group: str | None = None
+    stream_url: str
+
+
 class IPTVSourceAddRequest(BaseModel):
     """Request model for adding an IPTV source."""
     name: str = Field(..., min_length=1)
@@ -77,6 +85,28 @@ async def delete_iptv_source(name: str) -> dict[str, str]:
         if src["name"].lower() == name.lower():
             removed_name = sm.remove_source(i)
             return {"message": f"Removed source '{removed_name}'"}
+    raise HTTPException(status_code=404, detail="Source not found")
+
+
+@router.get("/sources/{name}/channels", response_model=list[IPTVChannelResponse])
+async def get_iptv_channels(name: str) -> list[IPTVChannelResponse]:
+    """Get all channels for a specific IPTV source."""
+    sm = get_source_manager()
+    if sm is None:
+        raise HTTPException(status_code=503, detail="SourceManager not available")
+    sources = sm.get_sources()
+    for src in sources:
+        if src["name"].lower() == name.lower():
+            channels = src.get("channels", [])
+            return [
+                IPTVChannelResponse(
+                    name=ch.get("name", "Unknown"),
+                    tvg_id=ch.get("tvg_id") or None,
+                    group=ch.get("group") or None,
+                    stream_url=ch.get("stream_url", ""),
+                )
+                for ch in channels
+            ]
     raise HTTPException(status_code=404, detail="Source not found")
 
 

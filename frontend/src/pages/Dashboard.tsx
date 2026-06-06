@@ -14,7 +14,7 @@ export function Dashboard() {
   const [commandStats, setCommandStats] = useState<CommandStats | null>(null)
   const [config, setConfig] = useState<Config | null>(null)
   const [iptvSources, setIptvSources] = useState<Array<{ name: string; url: string; enabled: boolean }>>([])
-  const [bookmarks, setBookmarks] = useState<Array<{ id: number; name: string; url: string; enabled: boolean }>>([])
+  const [bookmarks, setBookmarks] = useState<Array<{ id: number; name: string; url: string }>>([])
   const [loading, setLoading] = useState(true)
 
   // Load initial data once on mount

@@ -72,6 +72,7 @@ class CommandExecuteRequest(BaseModel):
     """Request model for executing a bot command."""
     command: str = Field(..., min_length=1)
     args: str = ""
+    channel_id: str | None = None
 
 
 class CommandExecuteResponse(BaseModel):
@@ -134,7 +135,7 @@ async def leave_voice_endpoint(guild_id: str) -> VoiceActionResponse:
 @router.post("/bot/guilds/{guild_id}/execute", response_model=CommandExecuteResponse)
 async def execute_command_endpoint(guild_id: str, request: CommandExecuteRequest) -> CommandExecuteResponse:
     """Execute a bot command in a guild."""
-    result = await execute_bot_command(guild_id, request.command, request.args)
+    result = await execute_bot_command(guild_id, request.command, request.args, channel_id=request.channel_id)
     return CommandExecuteResponse(**result)
 
 

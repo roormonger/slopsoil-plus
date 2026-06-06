@@ -169,7 +169,7 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
 
     try {
       const [command, ...args] = commandInput.trim().split(' ')
-      await api.executeCommand(selectedGuild, command, args.join(' '))
+      await api.executeCommand(selectedGuild, command, args.join(' '), selectedVoiceChannel)
       setCommandInput('')
     } catch (error) {
       console.error('Failed to execute command:', error)

@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from backend.database import get_bookmarks, add_bookmark, delete_bookmark, set_bookmark_enabled
+from backend.database import get_bookmarks, add_bookmark, delete_bookmark
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/bookmarks")
@@ -20,7 +20,6 @@ class BookmarkResponse(BaseModel):
     id: int
     name: str
     url: str
-    enabled: bool
 
 
 class BookmarkAddRequest(BaseModel):
@@ -32,7 +31,6 @@ class BookmarkAddRequest(BaseModel):
 class BookmarkActionResponse(BaseModel):
     """Response model for bookmark actions."""
     message: str
-    enabled: bool | None = None
 
 
 @router.get("", response_model=list[BookmarkResponse])
@@ -43,6 +41,7 @@ async def get_bookmarks_endpoint() -> list[BookmarkResponse]:
     return [BookmarkResponse(**bm) for bm in bookmarks]
 
 
+@router.post("", response_model=BookmarkActionResponse)
 @router.post("/", response_model=BookmarkActionResponse)
 async def add_bookmark_endpoint(request: BookmarkAddRequest) -> BookmarkActionResponse:
     """Add a new bookmark."""
@@ -60,18 +59,3 @@ async def delete_bookmark_endpoint(bookmark_id: int) -> BookmarkActionResponse:
     if not success:
         raise HTTPException(status_code=404, detail="Bookmark not found")
     return BookmarkActionResponse(message="Bookmark deleted")
-
-
-@router.post("/{bookmark_id}/toggle", response_model=BookmarkActionResponse)
-async def toggle_bookmark_endpoint(bookmark_id: int) -> BookmarkActionResponse:
-    """Toggle enable/disable state of a bookmark."""
-    bookmarks = get_bookmarks()
-    for bm in bookmarks:
-        if bm["id"] == bookmark_id:
-            new_state = not bm["enabled"]
-            set_bookmark_enabled(bookmark_id, new_state)
-            return BookmarkActionResponse(
-                message=f"Bookmark '{bm['name']}' {'enabled' if new_state else 'disabled'}",
-                enabled=new_state,
-            )
-    raise HTTPException(status_code=404, detail="Bookmark not found")

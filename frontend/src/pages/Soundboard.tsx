@@ -11,7 +11,7 @@ type Tab = 'system' | 'personal'
 export function Soundboard() {
   const api = useApi()
   const { user } = useAuth()
-  const { selectedGuild } = useGuild()
+  const { selectedGuild, selectedVoiceChannel } = useGuild()
   const [activeTab, setActiveTab] = useState<Tab>('system')
   const [systemSounds, setSystemSounds] = useState<Sound[]>([])
   const [personalSounds, setPersonalSounds] = useState<Sound[]>([])
@@ -70,7 +70,11 @@ export function Soundboard() {
       api.showMessage('Please select a guild from the top navigation first', 'error')
       return
     }
-    await api.playSound(filename, type, selectedGuild)
+    if (!selectedVoiceChannel) {
+      api.showMessage('Please select a voice channel from the top navigation first', 'error')
+      return
+    }
+    await api.playSound(filename, type, selectedGuild, selectedVoiceChannel)
   }
 
   const renderSoundGrid = (sounds: Sound[], type: 'system' | 'personal') => {
@@ -104,8 +108,12 @@ export function Soundboard() {
                 variant="ghost"
                 className="h-8 w-8 p-0 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300"
                 onClick={() => handlePlay(sound.filename, type)}
-                disabled={!selectedGuild}
-                title={selectedGuild ? 'Play' : 'Select a guild first'}
+                disabled={!selectedGuild || !selectedVoiceChannel}
+                title={
+                  !selectedGuild ? 'Select a guild first' :
+                  !selectedVoiceChannel ? 'Select a voice channel first' :
+                  'Play'
+                }
               >
                 <Play className="w-4 h-4" />
               </Button>

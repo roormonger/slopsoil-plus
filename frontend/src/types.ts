@@ -107,11 +107,17 @@ export interface IptvSource {
   channel_count: number
 }
 
+export interface IptvChannel {
+  name: string
+  tvg_id: string | null
+  group: string | null
+  stream_url: string
+}
+
 export interface Bookmark {
   id: number
   name: string
   url: string
-  enabled: boolean
 }
 
 export interface Guild {

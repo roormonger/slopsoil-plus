@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import type { Config, User, BotStatus, NowPlaying, IptvSource, Bookmark, Sound, Guild, VoiceChannel, VoiceStatus, CommandResult, MusicStatus, CommandStats } from '../types'
+import type { Config, User, BotStatus, NowPlaying, IptvSource, IptvChannel, Bookmark, Sound, Guild, VoiceChannel, VoiceStatus, CommandResult, MusicStatus, CommandStats } from '../types'
 
 const API_URL = '/api'
 
@@ -157,12 +157,12 @@ export function useApi() {
     }
   }, [showMessage])
 
-  const executeCommand = useCallback(async (guildId: string, command: string, args: string): Promise<CommandResult | null> => {
+  const executeCommand = useCallback(async (guildId: string, command: string, args: string, channelId: string = ''): Promise<CommandResult | null> => {
     try {
       const res = await fetch(`${API_URL}/bot/guilds/${guildId}/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command, args }),
+        body: JSON.stringify({ command, args, channel_id: channelId || undefined }),
       })
       return await res.json()
     } catch (err) {
@@ -194,6 +194,17 @@ export function useApi() {
       return await res.json()
     } catch (err) {
       showMessage(err instanceof Error ? err.message : 'Failed to load IPTV sources')
+      return null
+    }
+  }, [showMessage])
+
+  const fetchIptvChannels = useCallback(async (name: string): Promise<IptvChannel[] | null> => {
+    try {
+      const res = await fetch(`${API_URL}/iptv/sources/${encodeURIComponent(name)}/channels`)
+      if (!res.ok) throw new Error('Failed to fetch IPTV channels')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to load IPTV channels')
       return null
     }
   }, [showMessage])
@@ -268,21 +279,6 @@ export function useApi() {
     }
   }, [showMessage])
 
-  const toggleBookmark = useCallback(async (id: number, enabled: boolean): Promise<boolean> => {
-    try {
-      const res = await fetch(`${API_URL}/bookmarks/${id}/toggle`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled }),
-      })
-      if (!res.ok) throw new Error('Failed to toggle bookmark')
-      return true
-    } catch (err) {
-      showMessage(err instanceof Error ? err.message : 'Failed to toggle bookmark')
-      return false
-    }
-  }, [showMessage])
-
   const deleteBookmark = useCallback(async (id: number): Promise<boolean> => {
     try {
       const res = await fetch(`${API_URL}/bookmarks/${id}`, { method: 'DELETE' })
@@ -317,12 +313,12 @@ export function useApi() {
     }
   }, [showMessage])
 
-  const playMusic = useCallback(async (guildId: string, query: string): Promise<{ success: boolean; message: string } | null> => {
+  const playMusic = useCallback(async (guildId: string, query: string, channelId: string = ''): Promise<{ success: boolean; message: string } | null> => {
     try {
       const res = await fetch(`${API_URL}/music/play`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guild_id: guildId, query }),
+        body: JSON.stringify({ guild_id: guildId, query, channel_id: channelId || undefined }),
       })
       return await res.json()
     } catch (err) {
@@ -331,12 +327,12 @@ export function useApi() {
     }
   }, [showMessage])
 
-  const controlMusic = useCallback(async (guildId: string, action: 'stop' | 'skip' | 'back' | 'pause' | 'resume'): Promise<{ success: boolean; message: string } | null> => {
+  const controlMusic = useCallback(async (guildId: string, action: 'stop' | 'skip' | 'back' | 'pause' | 'resume', channelId: string = ''): Promise<{ success: boolean; message: string } | null> => {
     try {
       const res = await fetch(`${API_URL}/music/control`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guild_id: guildId, action }),
+        body: JSON.stringify({ guild_id: guildId, action, channel_id: channelId || undefined }),
       })
       return await res.json()
     } catch (err) {
@@ -345,12 +341,12 @@ export function useApi() {
     }
   }, [showMessage])
 
-  const setMusicVolume = useCallback(async (guildId: string, volume: number): Promise<{ success: boolean; message: string } | null> => {
+  const setMusicVolume = useCallback(async (guildId: string, volume: number, channelId: string = ''): Promise<{ success: boolean; message: string } | null> => {
     try {
       const res = await fetch(`${API_URL}/music/volume`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guild_id: guildId, volume }),
+        body: JSON.stringify({ guild_id: guildId, volume, channel_id: channelId || undefined }),
       })
       return await res.json()
     } catch (err) {
@@ -526,7 +522,7 @@ export function useApi() {
     }
   }, [showMessage])
 
-  const playSound = useCallback(async (filename: string, type: 'system' | 'personal', guildId: string): Promise<boolean> => {
+  const playSound = useCallback(async (filename: string, type: 'system' | 'personal', guildId: string, channelId: string): Promise<boolean> => {
     try {
       const token = localStorage.getItem('slopsoil_token')
       const res = await fetch(`${API_URL}/soundboard/play`, {
@@ -535,7 +531,7 @@ export function useApi() {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ filename, type, guild_id: guildId }),
+        body: JSON.stringify({ filename, type, guild_id: guildId, channel_id: channelId }),
       })
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
@@ -564,12 +560,12 @@ export function useApi() {
     executeCommand,
     saveConfig,
     fetchIptvSources,
+    fetchIptvChannels,
     addIptvSource,
     toggleIptvSource,
     deleteIptvSource,
     fetchBookmarks,
     addBookmark,
-    toggleBookmark,
     deleteBookmark,
     fetchDiscordUser,
     fetchCommandStats,

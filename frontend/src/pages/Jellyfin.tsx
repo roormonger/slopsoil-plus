@@ -29,7 +29,7 @@ const formatRuntime = (ticks?: number) => {
 
 export function Jellyfin() {
   const api = useApi()
-  const { selectedGuild } = useGuild()
+  const { selectedGuild, selectedVoiceChannel } = useGuild()
   const [libraries, setLibraries] = useState<JellyfinLibrary[]>([])
   const [selectedLibrary, setSelectedLibrary] = useState<string>('')
   const [items, setItems] = useState<JellyfinItem[]>([])
@@ -95,14 +95,14 @@ export function Jellyfin() {
     if (!selectedGuild) return
     
     const itemName = item.Type === 'Episode' ? item.Name : item.Name
-    await api.executeCommand(selectedGuild, 'media', itemName)
+    await api.executeCommand(selectedGuild, 'media', itemName, selectedVoiceChannel)
   }
 
   const handleAddToQueue = async (item: JellyfinItem) => {
     if (!selectedGuild) return
     
     const itemName = item.Type === 'Episode' ? item.Name : item.Name
-    await api.executeCommand(selectedGuild, 'queue', itemName)
+    await api.executeCommand(selectedGuild, 'queue', itemName, selectedVoiceChannel)
   }
 
   const handleBookmarkItem = async (item: JellyfinItem) => {
@@ -155,7 +155,7 @@ export function Jellyfin() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6 h-[calc(100vh-8rem)]">
       {/* Error/Success Messages */}
       {api.error && (
         <div className="p-4 glass-card border-red-400/30 text-red-300 rounded-xl">{api.error}</div>
@@ -164,14 +164,14 @@ export function Jellyfin() {
         <div className="p-4 glass-card border-emerald-400/30 text-emerald-300 rounded-xl">{api.success}</div>
       )}
 
-      <div className="mb-8">
+      <div className="shrink-0">
         <h2 className="text-3xl font-bold gradient-text mb-2">Jellyfin</h2>
         <p className="text-slate-400">Browse your Jellyfin media library</p>
       </div>
 
       
       {/* Library Selection */}
-      <div className="glass-card rounded-2xl p-6">
+      <div className="glass-card rounded-2xl p-6 shrink-0">
         <h3 className="text-xl font-semibold text-slate-200 mb-4">Libraries</h3>
         {libraries.length === 0 ? (
           <div className="text-center py-8">
@@ -206,7 +206,7 @@ export function Jellyfin() {
 
       {/* Search and Filters */}
       {selectedLibrary && (
-        <div className="glass-card rounded-2xl p-6">
+        <div className="glass-card rounded-2xl p-6 shrink-0">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
@@ -246,8 +246,8 @@ export function Jellyfin() {
 
       {/* Items List */}
       {selectedLibrary && (
-        <div className="glass-card rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-4">
+        <div className="glass-card rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
+          <div className="flex items-center justify-between p-6 pb-2 shrink-0">
             <h3 className="text-xl font-semibold text-slate-200">
               {libraries.find(l => l.Id === selectedLibrary)?.Name || 'Media'}
             </h3>
@@ -256,17 +256,16 @@ export function Jellyfin() {
             </div>
           </div>
           
-          {items.length === 0 ? (
-            <div className="text-center py-8">
-              <Film className="w-12 h-12 text-slate-500 mx-auto mb-3" />
-              <p className="text-slate-400">
-                {searchQuery ? 'No items found matching your search.' : 'No items found in this library.'}
-              </p>
-            </div>
-          ) : (
-            <>
-              {/* Compact List View */}
-              <div className="space-y-2 mb-6">
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-6">
+            {items.length === 0 ? (
+              <div className="text-center py-8">
+                <Film className="w-12 h-12 text-slate-500 mx-auto mb-3" />
+                <p className="text-slate-400">
+                  {searchQuery ? 'No items found matching your search.' : 'No items found in this library.'}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2 pb-4">
                 {items
                   .slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
                   .map((item) => (
@@ -355,63 +354,62 @@ export function Jellyfin() {
                     </div>
                   ))}
               </div>
-
-              {/* Pagination */}
-              {totalItems > ITEMS_PER_PAGE && (
-                <div className="flex items-center justify-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                    disabled={currentPage === 1}
-                    className="glass-light border-white/10 text-slate-300 hover:bg-white/10 disabled:opacity-50"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </Button>
+            )}
+          </div>
+          
+          {items.length > 0 && totalItems > ITEMS_PER_PAGE && (
+            <div className="flex items-center justify-center gap-2 p-6 pt-2 shrink-0">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="glass-light border-white/10 text-slate-300 hover:bg-white/10 disabled:opacity-50"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, Math.ceil(totalItems / ITEMS_PER_PAGE)) }, (_, i) => {
+                  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE)
+                  let startPage = Math.max(1, currentPage - 2)
+                  let endPage = Math.min(totalPages, startPage + 4)
                   
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: Math.min(5, Math.ceil(totalItems / ITEMS_PER_PAGE)) }, (_, i) => {
-                      const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE)
-                      let startPage = Math.max(1, currentPage - 2)
-                      let endPage = Math.min(totalPages, startPage + 4)
-                      
-                      if (endPage - startPage < 4) {
-                        startPage = Math.max(1, endPage - 4)
-                      }
-                      
-                      const pageNum = startPage + i
-                      if (pageNum > totalPages) return null
-                      
-                      return (
-                        <Button
-                          key={pageNum}
-                          size="sm"
-                          variant={currentPage === pageNum ? "default" : "outline"}
-                          onClick={() => setCurrentPage(pageNum)}
-                          className={`${
-                            currentPage === pageNum
-                              ? 'bg-primary/20 text-primary border border-primary/30'
-                              : 'glass-light border-white/10 text-slate-300 hover:bg-white/10'
-                          } h-8 w-8 p-0`}
-                        >
-                          {pageNum}
-                        </Button>
-                      )
-                    })}
-                  </div>
+                  if (endPage - startPage < 4) {
+                    startPage = Math.max(1, endPage - 4)
+                  }
                   
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setCurrentPage(Math.min(Math.ceil(totalItems / ITEMS_PER_PAGE), currentPage + 1))}
-                    disabled={currentPage === Math.ceil(totalItems / ITEMS_PER_PAGE)}
-                    className="glass-light border-white/10 text-slate-300 hover:bg-white/10 disabled:opacity-50"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </Button>
-                </div>
-              )}
-            </>
+                  const pageNum = startPage + i
+                  if (pageNum > totalPages) return null
+                  
+                  return (
+                    <Button
+                      key={pageNum}
+                      size="sm"
+                      variant={currentPage === pageNum ? "default" : "outline"}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`${
+                        currentPage === pageNum
+                          ? 'bg-primary/20 text-primary border border-primary/30'
+                          : 'glass-light border-white/10 text-slate-300 hover:bg-white/10'
+                      } h-8 w-8 p-0`}
+                    >
+                      {pageNum}
+                    </Button>
+                  )
+                })}
+              </div>
+              
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setCurrentPage(Math.min(Math.ceil(totalItems / ITEMS_PER_PAGE), currentPage + 1))}
+                disabled={currentPage === Math.ceil(totalItems / ITEMS_PER_PAGE)}
+                className="glass-light border-white/10 text-slate-300 hover:bg-white/10 disabled:opacity-50"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
           )}
         </div>
       )}

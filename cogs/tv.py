@@ -409,6 +409,79 @@ class TV(commands.Cog):
             live=True, audio=has_audio, probe_size=10_000_000,
         )
 
+    async def _handle_url(
+        self,
+        send: Callable,
+        guild: discord.Guild,
+        voice_channel: discord.VoiceChannel | discord.StageChannel,
+        vc: discord.VoiceClient | None,
+        url: str,
+        requester: str,
+    ) -> None:
+        """Play a direct URL through the same path as !play <url>."""
+        status = await send("checking…")
+
+        # CGI URLs are direct HTTP video feeds — probe and stream immediately.
+        parsed_path = urlparse(url).path.lower()
+        if parsed_path.endswith(".cgi"):
+            title = parsed_path.rsplit("/", 1)[-1]
+            log.info("play: CGI stream '%s' (requested by %s)", title, requester)
+            self._cancel_schedule(guild.id)
+            await self._start_iptv_stream(
+                send, guild, voice_channel, vc, title, url
+            )
+            return
+
+        # Check for a live broadcast before attempting a full download.
+        try:
+            live_result = await _yt_extract_live_url(url)
+        except Exception as exc:
+            log.warning("live-check failed for %r: %s", url, exc)
+            live_result = None
+
+        if live_result is not None:
+            stream_url, title = live_result
+            log.info("play: live stream '%s' (requested by %s)", title, requester)
+            await status.edit(content=f"starting **{title}**…")
+            self._cancel_schedule(guild.id)
+            await self._start_iptv_stream(
+                send, guild, voice_channel, vc, title, stream_url
+            )
+            return
+
+        # Not a live broadcast: download then play.
+        await status.edit(content="downloading…")
+        tmp_dir = tempfile.mkdtemp(prefix="slopsoil_yt_")
+        try:
+            try:
+                file_path, title = await _yt_download(url, tmp_dir)
+            except Exception as exc:
+                log.exception("yt-dlp download failed for %r: %s", url, exc)
+                await status.edit(content=f"download failed: {exc}")
+                _yt_remove_dir(tmp_dir)
+                return
+
+            log.info("yt-dlp downloaded '%s' → %s", title, file_path)
+            await status.edit(content=f"starting **{title}**…")
+
+            await start_live_stream(
+                self.bot, send, guild, voice_channel, vc,
+                title=title, url=file_path, live=False, audio=True,
+                probe_size=2_000_000,
+            )
+
+            stream_task = self.bot.stream_tasks.get(guild.id)
+            if stream_task:
+                asyncio.create_task(
+                    _yt_cleanup_after_stream(stream_task, tmp_dir),
+                    name=f"yt-cleanup-{guild.id}",
+                )
+            else:
+                _yt_remove_dir(tmp_dir)
+        except Exception:
+            _yt_remove_dir(tmp_dir)
+            raise
+
     # ── Commands ──────────────────────────────────────────────────────────────
 
     @require_role(Role.VIEWER)
@@ -582,68 +655,9 @@ class TV(commands.Cog):
                 ctx.author,
                 guild,
             )
-            status = await ctx.send("checking…")
-
-            # CGI URLs are direct HTTP video feeds — probe and stream immediately.
-            parsed_path = urlparse(query).path.lower()
-            if parsed_path.endswith(".cgi"):
-                title = parsed_path.rsplit("/", 1)[-1]
-                log.info("play: CGI stream '%s' (requested by %s)", title, ctx.author)
-                self._cancel_schedule(guild.id)
-                await self._start_iptv_stream(
-                    ctx.send, guild, voice_channel, vc, title, query
-                )
-                return
-
-            # Check for a live broadcast before attempting a full download.
-            try:
-                live_result = await _yt_extract_live_url(query)
-            except Exception as exc:
-                log.warning("live-check failed for %r: %s", query, exc)
-                live_result = None
-
-            if live_result is not None:
-                stream_url, title = live_result
-                log.info("play: live stream '%s' (requested by %s)", title, ctx.author)
-                await status.edit(content=f"starting **{title}**…")
-                self._cancel_schedule(guild.id)
-                await self._start_iptv_stream(
-                    ctx.send, guild, voice_channel, vc, title, stream_url
-                )
-                return
-
-            # Not a live broadcast: download then play.
-            await status.edit(content="downloading…")
-            tmp_dir = tempfile.mkdtemp(prefix="slopsoil_yt_")
-            try:
-                try:
-                    file_path, title = await _yt_download(query, tmp_dir)
-                except Exception as exc:
-                    log.exception("yt-dlp download failed for %r: %s", query, exc)
-                    await status.edit(content=f"download failed: {exc}")
-                    _yt_remove_dir(tmp_dir)
-                    return
-
-                log.info("yt-dlp downloaded '%s' → %s", title, file_path)
-                await status.edit(content=f"starting **{title}**…")
-
-                await start_live_stream(
-                    self.bot, ctx.send, guild, voice_channel, vc,
-                    title=title, url=file_path, live=False, audio=True,
-                    probe_size=2_000_000,
-                )
-
-                stream_task = self.bot.stream_tasks.get(guild.id)
-                if stream_task:
-                    asyncio.create_task(
-                        _yt_cleanup_after_stream(stream_task, tmp_dir),
-                        name=f"yt-cleanup-{guild.id}",
-                    )
-                else:
-                    _yt_remove_dir(tmp_dir)
-            except Exception:
-                _yt_remove_dir(tmp_dir)
-                raise
+            await self._handle_url(
+                ctx.send, guild, voice_channel, vc, query, str(ctx.author)
+            )
             return
 
         log.info(
@@ -695,15 +709,15 @@ class TV(commands.Cog):
             return
 
         # Check bookmarks as last resort
-        from backend.database import get_enabled_bookmarks
-        bookmarks = get_enabled_bookmarks()
+        from backend.database import get_bookmarks
+        bookmarks = get_bookmarks()
         q = query.lower()
         for bm in bookmarks:
             if q in bm["name"].lower():
                 log.info("matched bookmark: '%s' (%s)", bm["name"], bm["url"])
                 self._cancel_schedule(guild.id)
-                await self._start_iptv_stream(
-                    ctx.send, guild, voice_channel, vc, bm["name"], bm["url"], "Bookmark"
+                await self._handle_url(
+                    ctx.send, guild, voice_channel, vc, bm["url"], str(ctx.author)
                 )
                 return
 

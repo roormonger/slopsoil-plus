@@ -49,6 +49,7 @@ def list_user_sounds(user_id: str) -> list[dict[str, Any]]:
 def _get_target_dir(user_id: str | None) -> Path:
     """Return the target directory for a sound."""
     if user_id is None:
+        SYSTEM_DIR.mkdir(parents=True, exist_ok=True)
         return SYSTEM_DIR
     user_dir = USERS_DIR / user_id
     user_dir.mkdir(parents=True, exist_ok=True)

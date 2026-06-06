@@ -1,14 +1,20 @@
 import { useState, useEffect } from 'react'
-import { Loader2, Trash2 } from 'lucide-react'
+import { Loader2, Trash2, Play, ArrowLeft } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useApi } from '../hooks/useApi'
-import type { IptvSource } from '../types'
+import { useGuild } from '../contexts/GuildContext'
+import type { IptvSource, IptvChannel } from '../types'
 
 export function Iptv() {
   const api = useApi()
+  const { selectedGuild, selectedVoiceChannel } = useGuild()
   const [sources, setSources] = useState<IptvSource[]>([])
   const [loading, setLoading] = useState(true)
+  const [view, setView] = useState<'list' | 'channels'>('list')
+  const [selectedSource, setSelectedSource] = useState<string>('')
+  const [channels, setChannels] = useState<IptvChannel[]>([])
+  const [channelsLoading, setChannelsLoading] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [newName, setNewName] = useState('')
   const [newUrl, setNewUrl] = useState('')
@@ -28,6 +34,33 @@ export function Iptv() {
     }
     init()
   }, [])
+
+  const handleViewChannels = async (sourceName: string) => {
+    setSelectedSource(sourceName)
+    setChannelsLoading(true)
+    setView('channels')
+    const data = await api.fetchIptvChannels(sourceName)
+    if (data) setChannels(data)
+    setChannelsLoading(false)
+  }
+
+  const handleBack = () => {
+    setView('list')
+    setSelectedSource('')
+    setChannels([])
+  }
+
+  const handlePlay = async (channelName: string) => {
+    if (!selectedGuild) {
+      api.showMessage('Please select a guild from the top navigation first', 'error')
+      return
+    }
+    if (!selectedVoiceChannel) {
+      api.showMessage('Please select a voice channel from the top navigation first', 'error')
+      return
+    }
+    await api.executeCommand(selectedGuild, 'play', channelName, selectedVoiceChannel)
+  }
 
   const handleToggle = async (name: string, enabled: boolean) => {
     const success = await api.toggleIptvSource(name, !enabled)
@@ -89,7 +122,7 @@ export function Iptv() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6 h-[calc(100vh-8rem)]">
       {/* Error/Success Messages */}
       {api.error && (
         <div className="p-4 glass-card border-red-400/30 text-red-300 rounded-xl">{api.error}</div>
@@ -98,48 +131,114 @@ export function Iptv() {
         <div className="p-4 glass-card border-emerald-400/30 text-emerald-300 rounded-xl">{api.success}</div>
       )}
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold gradient-text mb-2">IPTV Sources</h2>
-          <p className="text-slate-400">Manage M3U playlist sources for the !play command</p>
-        </div>
-        <Button onClick={openModal} className="bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30">
-          Add New
-        </Button>
-      </div>
+      {view === 'list' ? (
+        <>
+          <div className="flex items-center justify-between shrink-0">
+            <div>
+              <h2 className="text-3xl font-bold gradient-text mb-2">IPTV Sources</h2>
+              <p className="text-slate-400">Manage M3U playlist sources for the !play command</p>
+            </div>
+            <Button onClick={openModal} className="bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30">
+              Add New
+            </Button>
+          </div>
 
-      <div className="glass-card rounded-2xl overflow-hidden">
-        <div className="divide-y divide-white/5">
-          {sources.length === 0 ? (
-            <div className="p-8 text-center text-slate-400">No IPTV sources configured</div>
-          ) : (
-            sources.map((source) => (
-              <div key={source.name} className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors">
-                <div>
-                  <p className="font-medium text-slate-200">{source.name}</p>
-                  <p className="text-sm text-slate-400">{source.channel_count} channels</p>
+          <div className="glass-card rounded-2xl overflow-hidden flex-1 min-h-0">
+            <div className="divide-y divide-white/5 h-full overflow-y-auto custom-scrollbar">
+              {sources.length === 0 ? (
+                <div className="p-8 text-center text-slate-400">No IPTV sources configured</div>
+              ) : (
+                sources.map((source) => (
+                  <div
+                    key={source.name}
+                    className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors cursor-pointer"
+                    onClick={() => handleViewChannels(source.name)}
+                  >
+                    <div>
+                      <p className="font-medium text-slate-200">{source.name}</p>
+                      <p className="text-sm text-slate-400">{source.channel_count} channels</p>
+                    </div>
+                    <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                      <label className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={source.enabled}
+                          onChange={() => handleToggle(source.name, source.enabled)}
+                          className="rounded border-white/20 h-4 w-4 bg-transparent checked:bg-primary"
+                        />
+                        <span className={source.enabled ? 'text-emerald-400' : 'text-slate-400'}>
+                          {source.enabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                      </label>
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(source.name)} className="text-red-400 hover:text-red-300 hover:bg-red-500/10">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex items-center gap-3 shrink-0">
+            <Button variant="ghost" size="sm" onClick={handleBack} className="text-slate-300 hover:text-white hover:bg-white/10">
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              Back
+            </Button>
+            <div>
+              <h2 className="text-3xl font-bold gradient-text">{selectedSource}</h2>
+              <p className="text-slate-400">{channels.length} channels</p>
+            </div>
+          </div>
+
+          <div className="glass-card rounded-2xl overflow-hidden flex-1 min-h-0">
+            <div className="divide-y divide-white/5 h-full overflow-y-auto custom-scrollbar">
+              {channelsLoading ? (
+                <div className="p-8 text-center text-slate-400">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                  Loading channels…
                 </div>
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={source.enabled}
-                      onChange={() => handleToggle(source.name, source.enabled)}
-                      className="rounded border-white/20 h-4 w-4 bg-transparent checked:bg-primary"
-                    />
-                    <span className={source.enabled ? 'text-emerald-400' : 'text-slate-400'}>
-                      {source.enabled ? 'Enabled' : 'Disabled'}
-                    </span>
-                  </label>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(source.name)} className="text-red-400 hover:text-red-300 hover:bg-red-500/10">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+              ) : channels.length === 0 ? (
+                <div className="p-8 text-center text-slate-400">No channels found in this source</div>
+              ) : (
+                channels.map((ch, idx) => (
+                  <div key={`${ch.name}-${idx}`} className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-slate-200">{ch.name}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        {ch.group && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-slate-300">
+                            {ch.group}
+                          </span>
+                        )}
+                        {ch.tvg_id && (
+                          <span className="text-xs text-slate-500">ID: {ch.tvg_id}</span>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handlePlay(ch.name)}
+                      disabled={!selectedGuild || !selectedVoiceChannel}
+                      className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 ml-4"
+                      title={
+                        !selectedGuild ? 'Select a guild first' :
+                        !selectedVoiceChannel ? 'Select a voice channel first' :
+                        'Play'
+                      }
+                    >
+                      <Play className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Add Source Modal */}
       {showModal && (

@@ -9,7 +9,7 @@ import type { MusicStatus } from '../types'
 
 export function Music() {
   const api = useApi()
-  const { selectedGuild } = useGuild()
+  const { selectedGuild, selectedVoiceChannel } = useGuild()
   const { musicStatus: wsMusicStatus } = useWebSocketContext()
   const [status, setStatus] = useState<MusicStatus | null>(null)
   const [loading, setLoading] = useState(true)
@@ -49,7 +49,7 @@ export function Music() {
   const handlePlay = async () => {
     if (!selectedGuild || !searchQuery.trim()) return
     setIsSearching(true)
-    await api.playMusic(selectedGuild, searchQuery.trim())
+    await api.playMusic(selectedGuild, searchQuery.trim(), selectedVoiceChannel)
     setSearchQuery('')
     setIsSearching(false)
     loadStatus()
@@ -57,13 +57,13 @@ export function Music() {
 
   const handleControl = async (action: 'stop' | 'skip' | 'back' | 'pause' | 'resume') => {
     if (!selectedGuild) return
-    await api.controlMusic(selectedGuild, action)
+    await api.controlMusic(selectedGuild, action, selectedVoiceChannel)
     loadStatus()
   }
 
   const handleVolumeChange = async (volume: number) => {
     if (!selectedGuild) return
-    await api.setMusicVolume(selectedGuild, volume)
+    await api.setMusicVolume(selectedGuild, volume, selectedVoiceChannel)
     loadStatus()
   }
 
