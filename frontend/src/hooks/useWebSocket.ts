@@ -7,13 +7,14 @@ export type WSEvent = {
 
 export function useWebSocket() {
   const [connected, setConnected] = useState(false);
-  const [lastEvent, setLastEvent] = useState<WSEvent | null>(null);
+  const [eventTick, setEventTick] = useState(0);
+  const eventQueueRef = useRef<WSEvent[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const heartbeatRef = useRef<ReturnType<typeof setInterval>>();
 
   const connect = useCallback(() => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("slopsoil_token");
     if (!token) return;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -48,7 +49,9 @@ export function useWebSocket() {
         return;
       }
       if (data.type === "pong") return;
-      setLastEvent(data);
+      console.log('[WS] received:', data.type, data.data);
+      eventQueueRef.current.push(data);
+      setEventTick((t) => t + 1);
     };
 
     ws.onerror = () => {
@@ -65,5 +68,11 @@ export function useWebSocket() {
     };
   }, [connect]);
 
-  return { connected, lastEvent };
+  const consumeEvents = useCallback(() => {
+    const events = eventQueueRef.current;
+    eventQueueRef.current = [];
+    return events;
+  }, []);
+
+  return { connected, eventTick, consumeEvents };
 }

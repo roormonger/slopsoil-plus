@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { PlayCircle, Film, Tv, Music, Book, Search, Clock, Star, Play, Plus, Bookmark, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { PlayCircle, Film, Tv, Music, Book, Search, Clock, Star, Play, Plus, Bookmark, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useApi } from '../hooks/useApi'
@@ -40,7 +40,22 @@ export function Jellyfin() {
   const [config, setConfig] = useState<any>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
+  const [itemsLoading, setItemsLoading] = useState(false)
   const ITEMS_PER_PAGE = 50
+  const LAST_LIB_KEY = 'jellyfin_last_library'
+  const libScrollRef = useRef<HTMLDivElement>(null)
+
+  const scrollLibsLeft = () => {
+    if (libScrollRef.current) {
+      libScrollRef.current.scrollBy({ left: -200, behavior: 'smooth' })
+    }
+  }
+
+  const scrollLibsRight = () => {
+    if (libScrollRef.current) {
+      libScrollRef.current.scrollBy({ left: 200, behavior: 'smooth' })
+    }
+  }
 
   // Load config and check if Jellyfin is configured
   useEffect(() => {
@@ -62,7 +77,16 @@ export function Jellyfin() {
     const loadLibraries = async () => {
       try {
         const librariesData = await api.fetchJellyfinLibraries()
-        if (librariesData) setLibraries(librariesData)
+        if (librariesData) {
+          setLibraries(librariesData)
+          const lastLib = localStorage.getItem(LAST_LIB_KEY)
+          const match = librariesData.find((l: JellyfinLibrary) => l.Id === lastLib)
+          if (match) {
+            handleSelectLibrary(match.Id)
+          } else if (librariesData.length > 0) {
+            handleSelectLibrary(librariesData[0].Id)
+          }
+        }
       } catch (error) {
         console.error('Failed to load Jellyfin libraries:', error)
       }
@@ -75,6 +99,7 @@ export function Jellyfin() {
     if (!selectedLibrary) return
 
     const loadItems = async () => {
+      setItemsLoading(true)
       try {
         const itemsData = await api.fetchJellyfinItems(selectedLibrary, sortBy, sortOrder, searchQuery)
         if (itemsData) {
@@ -86,6 +111,8 @@ export function Jellyfin() {
         console.error('Failed to load Jellyfin items:', error)
         setItems([])
         setTotalItems(0)
+      } finally {
+        setItemsLoading(false)
       }
     }
     loadItems()
@@ -110,6 +137,11 @@ export function Jellyfin() {
     
     const itemName = item.Type === 'Episode' ? item.Name : item.Name
     await api.executeCommand(selectedGuild, 'bookmark', itemName)
+  }
+
+  const handleSelectLibrary = (id: string) => {
+    localStorage.setItem(LAST_LIB_KEY, id)
+    setSelectedLibrary(id)
   }
 
   // Show empty state if Jellyfin is not configured
@@ -170,94 +202,106 @@ export function Jellyfin() {
       </div>
 
       
-      {/* Library Selection */}
-      <div className="glass-card rounded-2xl p-6 shrink-0">
-        <h3 className="text-xl font-semibold text-slate-200 mb-4">Libraries</h3>
+      {/* Libraries + Search + Filters — compact single card */}
+      <div className="glass-card rounded-2xl p-4 shrink-0 space-y-3">
         {libraries.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-slate-400">No libraries found or unable to connect to Jellyfin.</p>
+          <div className="text-center py-2">
+            <p className="text-slate-400 text-sm">No libraries found or unable to connect to Jellyfin.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {libraries.map((library) => (
+          <>
+            {/* Horizontal scrollable library pills */}
+            <div className="flex items-center gap-2">
               <Button
-                key={library.Id}
-                variant={selectedLibrary === library.Id ? "default" : "outline"}
-                onClick={() => setSelectedLibrary(library.Id)}
-                className={`h-20 flex flex-col items-center justify-center gap-2 ${
-                  selectedLibrary === library.Id
-                    ? 'bg-primary/20 text-primary border border-primary/30'
-                    : 'glass-light border-white/10 text-slate-300 hover:bg-white/10'
-                }`}
+                variant="ghost"
+                size="sm"
+                onClick={scrollLibsLeft}
+                className="shrink-0 h-8 w-8 p-0 text-slate-400 hover:text-white hover:bg-white/10"
               >
-                <div className="text-2xl">
-                  {library.CollectionType === 'movies' ? <Film className="w-6 h-6" /> :
-                   library.CollectionType === 'tvshows' ? <Tv className="w-6 h-6" /> :
-                   library.CollectionType === 'music' ? <Music className="w-6 h-6" /> :
-                   library.CollectionType === 'books' ? <Book className="w-6 h-6" /> :
-                   <PlayCircle className="w-6 h-6" />}
-                </div>
-                <span className="text-xs font-medium text-center">{library.Name}</span>
+                <ChevronLeft className="h-4 w-4" />
               </Button>
-            ))}
-          </div>
+              <div
+                ref={libScrollRef}
+                className="flex gap-2 overflow-x-auto scrollbar-hide"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              >
+                {libraries.map((library) => (
+                  <button
+                    key={library.Id}
+                    onClick={() => handleSelectLibrary(library.Id)}
+                    className={`px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-colors shrink-0 ${
+                      selectedLibrary === library.Id
+                        ? 'bg-primary/20 text-primary border border-primary/30'
+                        : 'glass-light border-white/10 text-slate-300 hover:bg-white/10'
+                    }`}
+                  >
+                    {library.Name}
+                  </button>
+                ))}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={scrollLibsRight}
+                className="shrink-0 h-8 w-8 p-0 text-slate-400 hover:text-white hover:bg-white/10"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Search + Filters row */}
+            {selectedLibrary && (
+              <div className="flex gap-3">
+                <div className="relative flex-1 min-w-0">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search media..."
+                    className="pl-10 glass-input text-slate-200"
+                  />
+                </div>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="h-10 px-3 rounded-xl glass-input text-sm text-slate-200 outline-none focus:ring-2 focus:ring-primary/50 shrink-0"
+                >
+                  <option value="Name">Name</option>
+                  <option value="ProductionYear">Year</option>
+                  <option value="PremiereDate">Date Added</option>
+                  <option value="CommunityRating">Rating</option>
+                  <option value="RunTimeTicks">Runtime</option>
+                </select>
+                <select
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value as 'Ascending' | 'Descending')}
+                  className="h-10 px-3 rounded-xl glass-input text-sm text-slate-200 outline-none focus:ring-2 focus:ring-primary/50 shrink-0"
+                >
+                  <option value="Ascending">A-Z</option>
+                  <option value="Descending">Z-A</option>
+                </select>
+              </div>
+            )}
+          </>
         )}
       </div>
-
-      {/* Search and Filters */}
-      {selectedLibrary && (
-        <div className="glass-card rounded-2xl p-6 shrink-0">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search media..."
-                  className="pl-10 glass-input text-slate-200"
-                />
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="h-10 px-3 rounded-xl glass-input text-sm text-slate-200 outline-none focus:ring-2 focus:ring-primary/50"
-              >
-                <option value="Name">Name</option>
-                <option value="ProductionYear">Year</option>
-                <option value="PremiereDate">Date Added</option>
-                <option value="CommunityRating">Rating</option>
-                <option value="RunTimeTicks">Runtime</option>
-              </select>
-              <select
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value as 'Ascending' | 'Descending')}
-                className="h-10 px-3 rounded-xl glass-input text-sm text-slate-200 outline-none focus:ring-2 focus:ring-primary/50"
-              >
-                <option value="Ascending">A-Z</option>
-                <option value="Descending">Z-A</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Items List */}
       {selectedLibrary && (
         <div className="glass-card rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
-          <div className="flex items-center justify-between p-6 pb-2 shrink-0">
-            <h3 className="text-xl font-semibold text-slate-200">
-              {libraries.find(l => l.Id === selectedLibrary)?.Name || 'Media'}
-            </h3>
+          <div className="flex items-center justify-end p-4 pb-0 shrink-0">
             <div className="text-sm text-slate-400">
               {totalItems} items
             </div>
           </div>
           
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-6">
-            {items.length === 0 ? (
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 py-2">
+            {itemsLoading ? (
+              <div className="flex flex-col items-center justify-center h-full gap-3">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm text-slate-400">Loading items…</p>
+              </div>
+            ) : items.length === 0 ? (
               <div className="text-center py-8">
                 <Film className="w-12 h-12 text-slate-500 mx-auto mb-3" />
                 <p className="text-slate-400">

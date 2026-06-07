@@ -90,19 +90,16 @@ export function Soundboard() {
     }
 
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {sounds.map(sound => (
           <div
             key={sound.filename}
-            className="glass-card rounded-xl p-4 flex flex-col items-center gap-3 hover:bg-white/5 transition-colors"
+            className="glass-light rounded-lg px-4 py-3 flex items-center justify-between gap-3 hover:bg-white/5 transition-colors"
           >
-            <div className="w-12 h-12 rounded-full glass-light flex items-center justify-center">
-              <Volume2 className="w-5 h-5 text-primary" />
-            </div>
-            <span className="text-sm font-medium text-slate-200 text-center truncate w-full" title={sound.name}>
+            <span className="text-sm font-medium text-slate-200 truncate" title={sound.name}>
               {sound.name}
             </span>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <Button
                 size="sm"
                 variant="ghost"
@@ -117,7 +114,7 @@ export function Soundboard() {
               >
                 <Play className="w-4 h-4" />
               </Button>
-              {(type === 'system' ? isAdmin : true) && (
+              {type === 'personal' && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -136,14 +133,14 @@ export function Soundboard() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="mb-8">
+    <div className="flex flex-col gap-6 h-[calc(100vh-8rem)]">
+      <div className="shrink-0">
         <h2 className="text-3xl font-bold gradient-text mb-2">Soundboard</h2>
         <p className="text-slate-400">Play sound clips in Discord voice channels</p>
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 shrink-0">
         <button
           onClick={() => setActiveTab('system')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -167,15 +164,17 @@ export function Soundboard() {
       </div>
 
       {loading && (
-        <div className="text-center py-12 text-slate-500">
-          <Volume2 className="w-8 h-8 mx-auto mb-2 animate-pulse opacity-50" />
-          <p>Loading sounds...</p>
+        <div className="flex-1 min-h-0 flex items-center justify-center text-slate-500">
+          <div className="text-center">
+            <Volume2 className="w-8 h-8 mx-auto mb-2 animate-pulse opacity-50" />
+            <p>Loading sounds...</p>
+          </div>
         </div>
       )}
 
       {!loading && activeTab === 'system' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="glass-card rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
+          <div className="flex items-center justify-between p-4 pb-2 shrink-0">
             <h3 className="text-lg font-semibold text-slate-200">System Sounds</h3>
             {isAdmin && (
               <>
@@ -202,13 +201,15 @@ export function Soundboard() {
               </>
             )}
           </div>
-          {renderSoundGrid(systemSounds, 'system')}
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 pt-2">
+            {renderSoundGrid(systemSounds, 'system')}
+          </div>
         </div>
       )}
 
       {!loading && activeTab === 'personal' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="glass-card rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
+          <div className="flex items-center justify-between p-4 pb-2 shrink-0">
             <div>
               <h3 className="text-lg font-semibold text-slate-200">My Soundboard</h3>
               <p className="text-sm text-slate-500">
@@ -240,12 +241,14 @@ export function Soundboard() {
             </>
           </div>
           {personalSounds.length >= quota && (
-            <div className="flex items-center gap-2 text-amber-400 text-sm">
+            <div className="flex items-center gap-2 text-amber-400 text-sm px-4 pb-2 shrink-0">
               <AlertCircle className="w-4 h-4" />
               Upload quota reached. Delete a sound to upload more.
             </div>
           )}
-          {renderSoundGrid(personalSounds, 'personal')}
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 pt-2">
+            {renderSoundGrid(personalSounds, 'personal')}
+          </div>
         </div>
       )}
     </div>

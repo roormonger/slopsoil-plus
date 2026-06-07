@@ -9,6 +9,7 @@ from discord.ext import commands
 from cogs.stream import cancel_stream
 from cogs.utils import resolve_voice
 from permissions import Role, require_role
+from backend.bot_runner import _broadcast_voice_state
 
 if TYPE_CHECKING:
     from bot import SlopSoil
@@ -43,6 +44,10 @@ class Voice(commands.Cog):
             )
             await voice_channel.connect(self_deaf=True)
 
+        # Broadcast voice state change via WebSocket
+        if guild and voice_channel:
+            await _broadcast_voice_state(str(guild.id), True, str(voice_channel.id))
+
         await ctx.send("joined!")
 
     @require_role(Role.FRIEND)
@@ -68,6 +73,11 @@ class Voice(commands.Cog):
         log.info("disconnecting from voice in guild '%s'", guild)
         cancel_stream(self.bot, guild.id)
         await vc.disconnect(force=False)
+
+        # Broadcast voice state change via WebSocket
+        if guild:
+            await _broadcast_voice_state(str(guild.id), False)
+
         await ctx.send("left!")
 
     @require_role(Role.FRIEND)
@@ -136,6 +146,7 @@ class Voice(commands.Cog):
             except Exception:
                 log.warning("error disconnecting go-live on auto-leave", exc_info=True)
         await vc.disconnect(force=False)
+        await _broadcast_voice_state(str(member.guild.id), False)
 
 
 async def setup(bot: commands.Bot):

@@ -24,12 +24,16 @@ class ConnectionManager:
         log.info("WebSocket client connected (%d total)", len(self.connections))
 
         # Send last known state for each event type to new client
+        log.info("Sending %d cached event types to new WS client", len(self._last_events))
         for event_type, payload in self._last_events.items():
             if payload is not None:
                 try:
                     await websocket.send_text(
                         json.dumps({"type": event_type, "data": payload})
                     )
+                    log.info("Sent cached event %s to new WS client", event_type)
+                    # Small pause so the frontend has time to process each message
+                    await asyncio.sleep(0.05)
                 except Exception:
                     pass
 
@@ -42,7 +46,9 @@ class ConnectionManager:
         """Broadcast an event to all connected WebSocket clients."""
         if payload is not None:
             self._last_events[event_type] = payload
-        message = json.dumps({"type": event_type, "data": payload or {}})
+        # Use `is not None` so empty lists/arrays serialize correctly instead of becoming {}
+        safe_payload = payload if payload is not None else {}
+        message = json.dumps({"type": event_type, "data": safe_payload})
         dead: set[WebSocket] = set()
 
         async with self._lock:

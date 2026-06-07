@@ -33,6 +33,7 @@ _bot_instance: SlopSoil | None = None
 _bot_task: asyncio.Task | None = None
 _bot_should_stop: bool = False
 _bot_start_time: float | None = None
+_bot_ready_event: asyncio.Event = asyncio.Event()
 
 
 def _get_uptime_seconds() -> int:
@@ -103,7 +104,7 @@ async def start_bot() -> bool:
 
     Returns True if started successfully, False otherwise.
     """
-    global _bot_instance, _bot_task, _bot_should_stop
+    global _bot_instance, _bot_task, _bot_should_stop, _bot_ready_event
 
     if _bot_instance is not None:
         log.warning("Bot is already running")
@@ -118,9 +119,19 @@ async def start_bot() -> bool:
     # Set env vars for legacy cog compatibility
     _set_env_from_config(config)
 
+    # Clear ready event before starting
+    _bot_ready_event.clear()
+
     # Start bot supervisor in background task
     _bot_task = asyncio.create_task(_bot_supervisor(config))
-    log.info("Discord bot started")
+
+    # Wait for bot to be ready (or timeout after 60 seconds)
+    try:
+        await asyncio.wait_for(_bot_ready_event.wait(), timeout=60.0)
+        log.info("Discord bot ready")
+    except asyncio.TimeoutError:
+        log.warning("Bot did not become ready within 60 seconds")
+        return False
 
     # Start WebSocket broadcast watcher
     asyncio.create_task(_ws_state_watcher())
@@ -162,11 +173,13 @@ async def _bot_supervisor(config: dict) -> None:
 
 async def _run_bot(token: str, stored_avatar_url: str = "") -> None:
     """Internal coroutine to run the bot. Assumes _bot_instance is set."""
-    global _bot_instance
+    global _bot_instance, _bot_ready_event
     if _bot_instance:
         await _bot_instance.start(token)
         # Wait for bot to be ready before checking avatar
         await _bot_instance.wait_until_ready()
+        # Signal that bot is ready
+        _bot_ready_event.set()
         # Mark start time for uptime tracking
         global _bot_start_time
         _bot_start_time = __import__("time").time()
@@ -201,6 +214,28 @@ async def stop_bot() -> bool:
 
     _bot_should_stop = True
     log.info("Stopping Discord bot...")
+
+    # Disconnect from all voice channels before closing
+    disconnected_guilds: list[str] = []
+    try:
+        for guild in _bot_instance.guilds:
+            vc = guild.voice_client
+            if vc:
+                log.info("Disconnecting from voice channel in guild '%s'", guild.name)
+                await vc.disconnect(force=False)
+                disconnected_guilds.append(str(guild.id))
+    except Exception as e:
+        log.warning("Error disconnecting from voice channels: %s", e)
+
+    # Broadcast voice state changes for all disconnected guilds
+    for guild_id in disconnected_guilds:
+        try:
+            await ws_manager.broadcast("voice:state", {"connected": False, "guild_id": guild_id})
+        except Exception:
+            pass  # Ignore broadcast errors during shutdown
+
+    # Give Discord a moment to process the disconnections
+    await asyncio.sleep(0.5)
 
     try:
         await _bot_instance.close()
@@ -554,6 +589,7 @@ async def leave_voice_channel(guild_id: str) -> dict[str, Any]:
         from cogs.stream import cancel_stream
         cancel_stream(_bot_instance, guild.id)
         await vc.disconnect(force=False)
+        await _broadcast_voice_state(guild_id, False)
         return {"success": True, "message": "Left voice channel"}
     except Exception as e:
         log.error("Failed to leave voice channel: %s", e)
@@ -794,59 +830,94 @@ _last_now_playing: dict | None = None
 _last_bot_status: dict | None = None
 _last_music_status: dict | None = None
 _last_voice_status: dict | None = None
+_last_guilds: list | None = None
+
+
+async def _broadcast_all_state() -> None:
+    """Query current bot state and broadcast any changes via WebSocket."""
+    global _last_now_playing, _last_bot_status, _last_music_status, _last_voice_status, _last_guilds
+
+    log.info("DEBUG _broadcast_all_state: bot_instance=%s", _bot_instance is not None)
+    if _bot_instance is None:
+        # Bot offline — broadcast same format as get_bot_status()
+        try:
+            offline_status = get_bot_status()
+        except Exception:
+            log.info("DEBUG _broadcast_all_state: get_bot_status failed while offline")
+            return
+        if _last_bot_status != offline_status:
+            _last_bot_status = offline_status
+            await ws_manager.broadcast("bot:status", offline_status)
+            log.info("DEBUG _broadcast_all_state: broadcast offline bot:status")
+        else:
+            log.info("DEBUG _broadcast_all_state: bot offline, status unchanged")
+        return
+
+    # Bot online — check status
+    try:
+        current_status = get_bot_status()
+    except Exception:
+        return
+    if _last_bot_status != current_status:
+        _last_bot_status = current_status
+        await ws_manager.broadcast("bot:status", current_status)
+
+    # Check now playing
+    try:
+        current_np = get_now_playing()
+    except Exception:
+        current_np = {"streams": [], "count": 0}
+    if _last_now_playing != current_np:
+        _last_now_playing = current_np
+        await ws_manager.broadcast("player:now-playing", current_np)
+
+    # Check music status
+    try:
+        current_music = get_music_status()
+    except Exception:
+        current_music = None
+    if _last_music_status != current_music:
+        _last_music_status = current_music
+        await ws_manager.broadcast("music:status", current_music)
+
+    # Check voice status
+    try:
+        current_voice = get_bot_voice_status()
+        log.info("DEBUG _broadcast_all_state: voice status: connected=%s guild=%s channel=%s", current_voice.get("connected"), current_voice.get("guild_id"), current_voice.get("channel_id"))
+    except Exception:
+        current_voice = {"connected": False}
+        log.info("DEBUG _broadcast_all_state: get_bot_voice_status exception")
+    if _last_voice_status != current_voice:
+        _last_voice_status = current_voice
+        await ws_manager.broadcast("voice:state", current_voice)
+        log.info("DEBUG _broadcast_all_state: broadcast voice:state changed")
+
+    # Check guilds (with voice channels embedded)
+    try:
+        current_guilds = get_bot_guilds()
+        log.info("DEBUG _broadcast_all_state: get_bot_guilds returned %d guilds", len(current_guilds))
+        for guild in current_guilds:
+            channels = get_guild_voice_channels(guild["id"])
+            guild["voice_channels"] = channels or []
+            log.info("DEBUG _broadcast_all_state: guild %s has %d voice channels", guild["id"], len(guild["voice_channels"]))
+    except Exception as e:
+        log.info("DEBUG _broadcast_all_state: get_bot_guilds exception: %s", e)
+        current_guilds = []
+    if _last_guilds != current_guilds:
+        log.info("DEBUG _broadcast_all_state: guilds changed, broadcasting %d guilds", len(current_guilds))
+        _last_guilds = current_guilds
+        await ws_manager.broadcast("guilds:list", current_guilds)
+    else:
+        log.info("DEBUG _broadcast_all_state: guilds unchanged (%d)", len(current_guilds) if current_guilds else 0)
 
 
 async def _ws_state_watcher() -> None:
     """Background task that watches bot state and broadcasts changes."""
-    global _last_now_playing, _last_bot_status, _last_music_status, _last_voice_status
+    # Immediate initial broadcast so _last_events is populated before any client connects
+    await _broadcast_all_state()
     while True:
         await asyncio.sleep(3)
-        if _bot_instance is None:
-            # Bot offline — broadcast same format as get_bot_status()
-            try:
-                offline_status = get_bot_status()
-            except Exception:
-                continue
-            if _last_bot_status != offline_status:
-                _last_bot_status = offline_status
-                await ws_manager.broadcast("bot:status", offline_status)
-            continue
-
-        # Bot online — check status
-        try:
-            current_status = get_bot_status()
-        except Exception:
-            continue
-        if _last_bot_status != current_status:
-            _last_bot_status = current_status
-            await ws_manager.broadcast("bot:status", current_status)
-
-        # Check now playing
-        try:
-            current_np = get_now_playing()
-        except Exception:
-            current_np = {"streams": [], "count": 0}
-        if _last_now_playing != current_np:
-            _last_now_playing = current_np
-            await ws_manager.broadcast("player:now-playing", current_np)
-
-        # Check music status
-        try:
-            current_music = get_music_status()
-        except Exception:
-            current_music = None
-        if _last_music_status != current_music:
-            _last_music_status = current_music
-            await ws_manager.broadcast("music:status", current_music)
-
-        # Check voice status
-        try:
-            current_voice = get_bot_voice_status()
-        except Exception:
-            current_voice = {"connected": False}
-        if _last_voice_status != current_voice:
-            _last_voice_status = current_voice
-            await ws_manager.broadcast("voice:state", current_voice)
+        await _broadcast_all_state()
 
 
 async def _broadcast_voice_state(guild_id: str, connected: bool, channel_id: str | None = None) -> None:

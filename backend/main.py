@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -20,7 +21,7 @@ from pydantic import ValidationError
 
 from backend.routes import router
 from backend.ws import ws_router
-from backend.bot_runner import start_bot
+from backend.bot_runner import start_bot, stop_bot
 
 # Configure logging
 logging.basicConfig(
@@ -118,6 +119,10 @@ else:
         return {"message": "SlopSoil API - Frontend not built"}
 
 
+# Global shutdown event for graceful shutdown
+_shutdown_event = asyncio.Event()
+
+
 async def start_web_server() -> None:
     """Start the FastAPI/uvicorn server."""
     config = uvicorn.Config(
@@ -128,6 +133,8 @@ async def start_web_server() -> None:
     )
     server = uvicorn.Server(config)
     log.info("Starting web server on port %d", PORT)
+
+    # Run server until shutdown signal received
     await server.serve()
 
 
@@ -135,11 +142,36 @@ async def main() -> None:
     """Run both web server and Discord bot concurrently."""
     log.info("Starting SlopSoil Admin Panel...")
 
+    # Set up signal handlers for graceful shutdown
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, _shutdown_event.set)
+
     # Start services concurrently
-    await asyncio.gather(
-        start_web_server(),
-        start_bot(),
+    tasks = [
+        asyncio.create_task(start_web_server()),
+        asyncio.create_task(start_bot()),
+    ]
+
+    # Wait for shutdown signal or any task to complete
+    shutdown_task = asyncio.create_task(_shutdown_event.wait())
+    done, pending = await asyncio.wait(
+        tasks + [shutdown_task],
+        return_when=asyncio.FIRST_COMPLETED
     )
+
+    # Cancel remaining tasks
+    for task in pending:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    # Gracefully stop the bot (disconnects from voice channels)
+    log.info("Shutting down gracefully...")
+    await stop_bot()
+    log.info("Shutdown complete")
 
 
 if __name__ == "__main__":

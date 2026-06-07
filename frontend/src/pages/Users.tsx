@@ -18,7 +18,7 @@ export function Users() {
     const loadData = async () => {
       try {
         console.log('Loading users...')
-        const data = await api.get('/users')
+        const data = await api.get('/users/')
         console.log('Users data:', data)
         if (data) {
           setUsers(data)
@@ -46,7 +46,7 @@ export function Users() {
     // Reload users list
     const loadData = async () => {
       try {
-        const data = await api.get('/users')
+        const data = await api.get('/users/')
         if (data) setUsers(data)
       } catch (error) {
         console.error('Failed to reload users:', error)

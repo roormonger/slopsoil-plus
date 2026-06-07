@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { RefreshCw, Phone, PhoneOff, Terminal, ArrowRightLeft } from 'lucide-react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -6,7 +6,7 @@ import { Dropdown } from './ui/dropdown'
 import { useApi } from '../hooks/useApi'
 import { useGuild } from '../contexts/GuildContext'
 import { useWebSocketContext } from '../context/WebSocketContext'
-import type { BotStatus } from '../types'
+import type { BotStatus, Guild, VoiceChannel } from '../types'
 
 interface TopNavigationProps {
   onNavigate?: (page: string) => void
@@ -15,12 +15,34 @@ interface TopNavigationProps {
 export default function TopNavigation({ onNavigate }: TopNavigationProps) {
   const api = useApi()
   const { selectedGuild, selectedVoiceChannel, setSelectedGuild, setSelectedVoiceChannel } = useGuild()
-  const { botStatus: wsBotStatus, voiceState } = useWebSocketContext()
-  const [guilds, setGuilds] = useState<Array<{ id: string; name: string }>>([])
-  const [voiceChannels, setVoiceChannels] = useState<Array<{ id: string; name: string }>>([])
+  const { botStatus: wsBotStatus, voiceState, guilds: wsGuilds } = useWebSocketContext()
   const [commandInput, setCommandInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [initialBotStatus, setInitialBotStatus] = useState<BotStatus | null>(null)
+  const [httpGuilds, setHttpGuilds] = useState<Guild[]>([])
+  const [httpVoiceChannels, setHttpVoiceChannels] = useState<VoiceChannel[]>([])
+
+  // One-time HTTP fetch for guilds (fallback while WS connects)
+  useEffect(() => {
+    api.fetchGuilds().then(data => {
+      if (data) {
+        console.log('[TopNav] HTTP guilds loaded:', data.length)
+        setHttpGuilds(data)
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // One-time HTTP fetch for voice channels (fallback while WS connects)
+  useEffect(() => {
+    if (!selectedGuild) return
+    api.fetchVoiceChannels(selectedGuild).then(data => {
+      if (data) {
+        console.log('[TopNav] HTTP voice channels loaded:', data.length)
+        setHttpVoiceChannels(data)
+      }
+    })
+  }, [selectedGuild])
 
   // Load initial bot status via HTTP (WS only broadcasts on change, so new clients miss initial state)
   useEffect(() => {
@@ -34,57 +56,70 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
 
   const botStatus = wsBotStatus || initialBotStatus
 
-  // Load guilds
-  useEffect(() => {
-    const loadGuilds = async () => {
-      try {
-        const guildsData = await api.fetchGuilds()
-        if (guildsData) {
-          setGuilds(guildsData)
-          
-          // Check if saved guild is still available, otherwise select first guild
-          if (selectedGuild) {
-            const savedGuildExists = guildsData.some(guild => guild.id === selectedGuild)
-            if (!savedGuildExists && guildsData.length > 0) {
-              setSelectedGuild(guildsData[0].id)
-            }
-          } else if (guildsData.length > 0) {
-            // No saved guild, select first one
-            setSelectedGuild(guildsData[0].id)
-          }
-        }
-      } catch (error) {
-        console.error('Failed to load guilds:', error)
-      }
-    }
-    loadGuilds()
-  }, [selectedGuild, setSelectedGuild])
+  // Prefer WS guilds, fall back to HTTP
+  const effectiveGuilds = wsGuilds.length > 0 ? wsGuilds : httpGuilds
 
-  // Load voice channels when guild is selected
+  // Auto-select guild when guilds arrive or saved guild becomes invalid
+  useEffect(() => {
+    if (effectiveGuilds.length === 0) return
+    if (selectedGuild) {
+      const savedGuildExists = effectiveGuilds.some(guild => guild.id === selectedGuild)
+      if (!savedGuildExists) {
+        setSelectedGuild(effectiveGuilds[0].id)
+      }
+    } else {
+      setSelectedGuild(effectiveGuilds[0].id)
+    }
+  }, [effectiveGuilds, selectedGuild, setSelectedGuild])
+
+  // Derive voice channels for the selected guild (prefer WS, fallback to HTTP)
+  const wsVoiceChannels = wsGuilds.find(g => g.id === selectedGuild)?.voice_channels
+  const voiceChannels = wsVoiceChannels && wsVoiceChannels.length > 0
+    ? wsVoiceChannels
+    : httpVoiceChannels
+
+  // Validate saved voice channel when guild or channels change
   useEffect(() => {
     if (!selectedGuild) return
-
-    const loadVoiceChannels = async () => {
-      try {
-        const channelsData = await api.fetchVoiceChannels(selectedGuild)
-        if (channelsData) {
-          setVoiceChannels(channelsData)
-          
-          // Check if saved voice channel is still available for this guild
-          if (selectedVoiceChannel) {
-            const savedChannelExists = channelsData.some(channel => channel.id === selectedVoiceChannel)
-            if (!savedChannelExists) {
-              // Clear saved voice channel if it's no longer available
-              setSelectedVoiceChannel('')
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Failed to load voice channels:', error)
-      }
+    if (selectedVoiceChannel && !voiceChannels.some(c => c.id === selectedVoiceChannel)) {
+      setSelectedVoiceChannel('')
     }
-    loadVoiceChannels()
-  }, [selectedGuild, selectedVoiceChannel, setSelectedVoiceChannel])
+  }, [selectedGuild, voiceChannels, selectedVoiceChannel, setSelectedVoiceChannel])
+
+  // Track last auto-selected voice state to avoid overwriting manual selections
+  const lastAutoSelectedRef = useRef<{ guild_id?: string; channel_id?: string }>({})
+
+  // Auto-select guild and voice channel when bot connects via Discord
+  // Only triggers when voice state values actually change, not on every WS broadcast
+  useEffect(() => {
+    if (!voiceState?.connected) {
+      lastAutoSelectedRef.current = {}
+      return
+    }
+    const { guild_id, channel_id } = voiceState
+    if (!guild_id || !channel_id) return
+
+    // Only auto-select if voice state has actually changed since last auto-select
+    const last = lastAutoSelectedRef.current
+    if (last.guild_id === guild_id && last.channel_id === channel_id) {
+      return // Voice state hasn't changed, don't overwrite manual selection
+    }
+
+    // Update guild selection if different
+    if (guild_id !== selectedGuild) {
+      console.log('[TopNav] Auto-selecting guild from voiceState:', guild_id)
+      setSelectedGuild(guild_id)
+    }
+
+    // Update voice channel selection if different (and channels are loaded)
+    if (channel_id !== selectedVoiceChannel && voiceChannels.some(c => c.id === channel_id)) {
+      console.log('[TopNav] Auto-selecting voice channel from voiceState:', channel_id)
+      setSelectedVoiceChannel(channel_id)
+    }
+
+    // Remember what we auto-selected so we don't overwrite manual changes
+    lastAutoSelectedRef.current = { guild_id, channel_id }
+  }, [voiceState, selectedGuild, setSelectedGuild, selectedVoiceChannel, setSelectedVoiceChannel, voiceChannels])
 
   const handleReloadBot = async () => {
     setIsLoading(true)
@@ -231,7 +266,7 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
 
           {/* Server Dropdown */}
           <Dropdown
-            options={guilds.map(guild => ({ value: guild.id, label: guild.name }))}
+            options={effectiveGuilds.map(guild => ({ value: guild.id, label: guild.name }))}
             value={selectedGuild}
             onChange={setSelectedGuild}
             placeholder="Select Server"

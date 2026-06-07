@@ -76,7 +76,7 @@ export function UserCreateModal({ isOpen, onClose, onUserCreated }: UserCreateMo
 
     setLoading(true)
     try {
-      const response = await api.post('/users', {
+      const response = await api.post('/users/', {
         username: name.trim(),
         discord_id: discordUser?.id,
         password: password,

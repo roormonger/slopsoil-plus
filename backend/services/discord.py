@@ -66,21 +66,19 @@ async def fetch_discord_user(user_id: str) -> dict[str, Any]:
     try:
         bot = get_bot_instance()
         if bot is None:
-            return {"success": False, "error": "Bot not connected"}
+            return {"found": False, "error": "Bot not connected"}
         
         # Fetch user from Discord
         user = await bot.fetch_user(int(user_id))
         if user is None:
-            return {"success": False, "error": "User not found"}
+            return {"found": False, "error": "User not found"}
         
         return {
-            "success": True,
+            "found": True,
             "id": str(user.id),
-            "name": user.name,
-            "discriminator": user.discriminator,
+            "username": user.name,
             "avatar_url": str(user.avatar.url) if user.avatar else None,
-            "bot": user.bot,
         }
     except Exception as e:
         log.error(f"Error fetching Discord user {user_id}: {e}")
-        return {"success": False, "error": str(e)}
+        return {"found": False, "error": str(e)}

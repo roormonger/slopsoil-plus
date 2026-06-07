@@ -293,7 +293,7 @@ export function useApi() {
 
   const fetchDiscordUser = useCallback(async (discordId: string): Promise<{ found: boolean; username?: string; avatar_url?: string | null } | null> => {
     try {
-      const res = await fetch(`${API_URL}/discord/lookup/${discordId}`)
+      const res = await fetch(`${API_URL}/bot/discord/lookup/${discordId}`)
       if (!res.ok) throw new Error('Failed to lookup Discord user')
       return await res.json()
     } catch (err) {

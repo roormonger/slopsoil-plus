@@ -124,6 +124,7 @@ export interface Guild {
   id: string
   name: string
   icon_url?: string
+  voice_channels?: VoiceChannel[]
 }
 
 export interface VoiceChannel {

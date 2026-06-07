@@ -23,8 +23,8 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
     """
     try:
         jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except JWTError:
-        log.warning("WebSocket connection rejected: invalid token")
+    except JWTError as e:
+        log.warning("WebSocket connection rejected: invalid token - %s", str(e))
         await websocket.close(code=4001, reason="Invalid token")
         return
 
