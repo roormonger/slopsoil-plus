@@ -1,6 +1,7 @@
 sources.json
 slopsoil
 /data/
+/soundboard/
 vendor/
 node_modules/
 frontend/dist/
