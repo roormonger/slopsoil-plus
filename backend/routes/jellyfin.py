@@ -3,16 +3,221 @@
 Handles Jellyfin media library browsing and search.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Any
 
+import aiohttp
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from backend.bot_runner import get_bot_instance
-
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/jellyfin")
+
+_REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=60, connect=5)
+
+
+class _JellyfinBackendClient:
+    """Singleton HTTP client for Jellyfin backend routes.
+
+    Keeps a single persistent aiohttp.ClientSession so TCP connections are
+    reused across requests (connection pooling).  The Jellyfin user_id is
+    fetched once and cached; it is invalidated if the configured URL or API
+    key changes so a settings update is picked up transparently.
+    """
+
+    def __init__(self) -> None:
+        self._session: aiohttp.ClientSession | None = None
+        self._user_id: str | None = None
+        self._cached_url: str = ""
+        self._cached_key: str = ""
+
+    def _get_config(self) -> tuple[str, str] | None:
+        """Return (base_url, api_key) from DB, or None if not configured."""
+        from backend.bot_runner import _load_config_from_db
+        config = _load_config_from_db()
+        url = config.get("jellyfin", {}).get("url", "").rstrip("/")
+        key = config.get("jellyfin", {}).get("api_key", "")
+        if not url or not key:
+            return None
+        return url, key
+
+    def _headers(self, api_key: str) -> dict[str, str]:
+        return {
+            "Authorization": f'MediaBrowser Token="{api_key}"',
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+    def _invalidate_if_config_changed(self, url: str, key: str) -> None:
+        """Drop cached user_id if the Jellyfin URL or key changed."""
+        if url != self._cached_url or key != self._cached_key:
+            log.debug("Jellyfin config changed — invalidating cached user_id")
+            self._user_id = None
+            self._cached_url = url
+            self._cached_key = key
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Return the shared session, creating it if necessary."""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(timeout=_REQUEST_TIMEOUT)
+        return self._session
+
+    async def _get_user_id(self, url: str, api_key: str) -> str | None:
+        """Return cached Jellyfin user_id, fetching once if needed."""
+        if self._user_id is not None:
+            return self._user_id
+        session = await self._get_session()
+        try:
+            async with session.get(f"{url}/Users", headers=self._headers(api_key)) as resp:
+                if resp.status != 200:
+                    log.error("Jellyfin /Users returned %s", resp.status)
+                    return None
+                users = await resp.json()
+                if not users:
+                    log.error("Jellyfin returned empty user list")
+                    return None
+                self._user_id = users[0]["Id"]
+                log.info("Jellyfin: cached user_id %s", self._user_id)
+                return self._user_id
+        except Exception as exc:
+            log.error("Jellyfin: failed to fetch user list: %s", exc)
+            return None
+
+    async def get_libraries(self) -> list[dict]:
+        cfg = self._get_config()
+        if cfg is None:
+            return []
+        url, key = cfg
+        self._invalidate_if_config_changed(url, key)
+        user_id = await self._get_user_id(url, key)
+        if user_id is None:
+            return []
+        session = await self._get_session()
+        try:
+            async with session.get(
+                f"{url}/Users/{user_id}/Views",
+                headers=self._headers(key),
+            ) as resp:
+                if resp.status != 200:
+                    log.error("Jellyfin /Views returned %s", resp.status)
+                    return []
+                data = await resp.json()
+                return data.get("Items", [])
+        except Exception as exc:
+            log.error("Jellyfin: get_libraries failed: %s", exc)
+            return []
+
+    async def get_items(
+        self,
+        library_id: str,
+        sort_by: str,
+        sort_order: str,
+        search: str,
+        limit: int = 50,
+        start_index: int = 0,
+        include_item_types: str = "Movie,Series,Episode,MusicAlbum,MusicArtist,Book",
+    ) -> dict:
+        cfg = self._get_config()
+        if cfg is None:
+            return {"items": [], "total": 0}
+        url, key = cfg
+        self._invalidate_if_config_changed(url, key)
+        user_id = await self._get_user_id(url, key)
+        if user_id is None:
+            return {"items": [], "total": 0}
+        params: dict[str, str] = {
+            "SortBy": sort_by,
+            "SortOrder": sort_order,
+            "Recursive": "true",
+            "Fields": "Overview,CommunityRating,RunTimeTicks,UserData",
+            "IncludeItemTypes": include_item_types,
+            "Limit": str(limit),
+            "StartIndex": str(start_index),
+        }
+        if library_id != "all":
+            params["ParentId"] = library_id
+        if search:
+            params["SearchTerm"] = search
+            params["EnableSearch"] = "true"
+        session = await self._get_session()
+        try:
+            async with session.get(
+                f"{url}/Users/{user_id}/Items",
+                headers=self._headers(key),
+                params=params,
+            ) as resp:
+                if resp.status != 200:
+                    log.error("Jellyfin /Items returned %s", resp.status)
+                    return {"items": [], "total": 0}
+                data = await resp.json()
+                return {
+                    "items": data.get("Items", []),
+                    "total": data.get("TotalRecordCount", 0),
+                }
+        except Exception as exc:
+            log.error("Jellyfin: get_items failed: %s", exc)
+            return {"items": [], "total": 0}
+
+    async def get_seasons(self, series_id: str) -> list[dict]:
+        """Return all seasons for a series."""
+        cfg = self._get_config()
+        if cfg is None:
+            return []
+        url, key = cfg
+        self._invalidate_if_config_changed(url, key)
+        user_id = await self._get_user_id(url, key)
+        if user_id is None:
+            return []
+        session = await self._get_session()
+        try:
+            async with session.get(
+                f"{url}/Shows/{series_id}/Seasons",
+                headers=self._headers(key),
+                params={"UserId": user_id, "Fields": "Overview,UserData"},
+            ) as resp:
+                if resp.status != 200:
+                    log.error("Jellyfin /Seasons returned %s", resp.status)
+                    return []
+                data = await resp.json()
+                return sorted(data.get("Items", []), key=lambda s: s.get("IndexNumber") or 0)
+        except Exception as exc:
+            log.error("Jellyfin: get_seasons failed: %s", exc)
+            return []
+
+    async def get_episodes(self, series_id: str, season_id: str) -> list[dict]:
+        """Return all episodes for a season."""
+        cfg = self._get_config()
+        if cfg is None:
+            return []
+        url, key = cfg
+        self._invalidate_if_config_changed(url, key)
+        user_id = await self._get_user_id(url, key)
+        if user_id is None:
+            return []
+        session = await self._get_session()
+        try:
+            async with session.get(
+                f"{url}/Shows/{series_id}/Episodes",
+                headers=self._headers(key),
+                params={
+                    "UserId": user_id,
+                    "SeasonId": season_id,
+                    "Fields": "Overview,RunTimeTicks,UserData",
+                },
+            ) as resp:
+                if resp.status != 200:
+                    log.error("Jellyfin /Episodes returned %s", resp.status)
+                    return []
+                data = await resp.json()
+                return sorted(data.get("Items", []), key=lambda e: e.get("IndexNumber") or 0)
+        except Exception as exc:
+            log.error("Jellyfin: get_episodes failed: %s", exc)
+            return []
+
+
+_client = _JellyfinBackendClient()
 
 
 class JellyfinLibraryResponse(BaseModel):
@@ -37,141 +242,93 @@ class JellyfinItemResponse(BaseModel):
     UserData: dict[str, Any] | None = None
 
 
+class JellyfinItemsResponse(BaseModel):
+    """Paginated response for Jellyfin items."""
+    items: list[JellyfinItemResponse]
+    total: int
+
+
 @router.get("/libraries", response_model=list[JellyfinLibraryResponse])
 async def get_jellyfin_libraries_endpoint() -> list[JellyfinLibraryResponse]:
     """Get Jellyfin media libraries."""
-    from backend.bot_runner import _load_config_from_db
-    bot = get_bot_instance()
-    if bot is None:
-        return []
-
-    # Get Jellyfin config from database
-    config = _load_config_from_db()
-    if not config.get("jellyfin", {}).get("url") or not config.get("jellyfin", {}).get("api_key"):
-        return []
-
-    try:
-        import aiohttp
-        
-        headers = {
-            "Authorization": f'MediaBrowser Token="{config["jellyfin"]["api_key"]}"',
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            # Get user ID first (required for some Jellyfin endpoints)
-            user_url = f"{config['jellyfin']['url'].rstrip('/')}/Users"
-            async with session.get(user_url, headers=headers) as user_response:
-                if user_response.status != 200:
-                    log.error(f"Failed to fetch Jellyfin users: {user_response.status}")
-                    return []
-                users_data = await user_response.json()
-                if not users_data:
-                    log.error("No users found in Jellyfin")
-                    return []
-                user_id = users_data[0]["Id"]
-            
-            # Get libraries using the user ID
-            url = f"{config['jellyfin']['url'].rstrip('/')}/Users/{user_id}/Views"
-            async with session.get(url, headers=headers) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return [
-                        JellyfinLibraryResponse(
-                            Name=item.get("Name", ""),
-                            Id=item.get("Id", ""),
-                            Type=item.get("Type", ""),
-                            CollectionType=item.get("CollectionType", "")
-                        )
-                        for item in data.get("Items", [])
-                    ]
-                else:
-                    log.error(f"Jellyfin API returned status {response.status}")
-                    return []
-    except Exception as e:
-        log.error(f"Failed to fetch Jellyfin libraries: {e}")
-        return []
+    items = await _client.get_libraries()
+    return [
+        JellyfinLibraryResponse(
+            Name=item.get("Name", ""),
+            Id=item.get("Id", ""),
+            Type=item.get("Type", ""),
+            CollectionType=item.get("CollectionType", ""),
+        )
+        for item in items
+    ]
 
 
-@router.get("/items/{library_id}", response_model=list[JellyfinItemResponse])
+@router.get("/items/{library_id}", response_model=JellyfinItemsResponse)
 async def get_jellyfin_items_endpoint(
     library_id: str,
     sort_by: str = "Name",
     sort_order: str = "Ascending",
-    search: str = ""
-) -> list[JellyfinItemResponse]:
-    """Get items from a Jellyfin library."""
-    from backend.bot_runner import _load_config_from_db
-    bot = get_bot_instance()
-    if bot is None:
-        return []
+    search: str = "",
+    limit: int = 50,
+    start_index: int = 0,
+    include_item_types: str = "Movie,Series,Episode,MusicAlbum,MusicArtist,Book",
+) -> JellyfinItemsResponse:
+    """Get paginated items from a Jellyfin library."""
+    result = await _client.get_items(library_id, sort_by, sort_order, search, limit, start_index, include_item_types)
+    return JellyfinItemsResponse(
+        items=[
+            JellyfinItemResponse(
+                Id=item.get("Id", ""),
+                Name=item.get("Name", ""),
+                Type=item.get("Type", ""),
+                ProductionYear=item.get("ProductionYear"),
+                PremiereDate=item.get("PremiereDate"),
+                CommunityRating=item.get("CommunityRating"),
+                RunTimeTicks=item.get("RunTimeTicks"),
+                Overview=item.get("Overview"),
+                ImageTags=item.get("ImageTags"),
+                UserData=item.get("UserData"),
+            )
+            for item in result["items"]
+        ],
+        total=result["total"],
+    )
 
-    # Get Jellyfin config from database
-    config = _load_config_from_db()
-    if not config.get("jellyfin", {}).get("url") or not config.get("jellyfin", {}).get("api_key"):
-        return []
 
-    try:
-        import aiohttp
-        
-        headers = {
-            "Authorization": f'MediaBrowser Token="{config["jellyfin"]["api_key"]}"',
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            # Get user ID first (required for some Jellyfin endpoints)
-            user_url = f"{config['jellyfin']['url'].rstrip('/')}/Users"
-            async with session.get(user_url, headers=headers) as user_response:
-                if user_response.status != 200:
-                    log.error(f"Failed to fetch Jellyfin users: {user_response.status}")
-                    return []
-                users_data = await user_response.json()
-                if not users_data:
-                    log.error("No users found in Jellyfin")
-                    return []
-                user_id = users_data[0]["Id"]
-            
-            # Build items URL with filters
-            params = {
-                "SortBy": sort_by,
-                "SortOrder": sort_order,
-                "Recursive": "true",
-                "Fields": "Overview,CommunityRating,RunTimeTicks,UserData",
-                "IncludeItemTypes": "Movie,Series,Episode,MusicAlbum,MusicArtist,Book"
-            }
-            
-            if search:
-                params["SearchTerm"] = search
-                params["EnableSearch"] = "true"
-            
-            items_url = f"{config['jellyfin']['url'].rstrip('/')}/Users/{user_id}/Items"
-            if library_id != "all":
-                params["ParentId"] = library_id
-            
-            async with session.get(items_url, headers=headers, params=params) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return [
-                        JellyfinItemResponse(
-                            Id=item.get("Id", ""),
-                            Name=item.get("Name", ""),
-                            Type=item.get("Type", ""),
-                            ProductionYear=item.get("ProductionYear"),
-                            PremiereDate=item.get("PremiereDate"),
-                            CommunityRating=item.get("CommunityRating"),
-                            RunTimeTicks=item.get("RunTimeTicks"),
-                            Overview=item.get("Overview"),
-                            ImageTags=item.get("ImageTags"),
-                            UserData=item.get("UserData")
-                        )
-                        for item in data.get("Items", [])
-                    ]
-                else:
-                    log.error(f"Jellyfin items API returned status {response.status}")
-                    return []
-    except Exception as e:
-        log.error(f"Failed to fetch Jellyfin items: {e}")
-        return []
+@router.get("/series/{series_id}/seasons", response_model=list[JellyfinItemResponse])
+async def get_jellyfin_seasons_endpoint(series_id: str) -> list[JellyfinItemResponse]:
+    """Get all seasons for a TV series."""
+    seasons = await _client.get_seasons(series_id)
+    return [
+        JellyfinItemResponse(
+            Id=s.get("Id", ""),
+            Name=s.get("Name", ""),
+            Type=s.get("Type", "Season"),
+            ProductionYear=s.get("ProductionYear"),
+            Overview=s.get("Overview"),
+            ImageTags=s.get("ImageTags"),
+            UserData=s.get("UserData"),
+        )
+        for s in seasons
+    ]
+
+
+@router.get("/series/{series_id}/seasons/{season_id}/episodes", response_model=list[JellyfinItemResponse])
+async def get_jellyfin_episodes_endpoint(series_id: str, season_id: str) -> list[JellyfinItemResponse]:
+    """Get all episodes for a season."""
+    episodes = await _client.get_episodes(series_id, season_id)
+    return [
+        JellyfinItemResponse(
+            Id=e.get("Id", ""),
+            Name=e.get("Name", ""),
+            Type=e.get("Type", "Episode"),
+            ProductionYear=e.get("ProductionYear"),
+            PremiereDate=e.get("PremiereDate"),
+            CommunityRating=e.get("CommunityRating"),
+            RunTimeTicks=e.get("RunTimeTicks"),
+            Overview=e.get("Overview"),
+            ImageTags=e.get("ImageTags"),
+            UserData=e.get("UserData"),
+        )
+        for e in episodes
+    ]

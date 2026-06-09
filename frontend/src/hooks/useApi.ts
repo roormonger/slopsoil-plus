@@ -376,16 +376,51 @@ export function useApi() {
     }
   }, [showMessage])
 
-  const fetchJellyfinItems = useCallback(async (libraryId: string, sortBy: string = 'Name', sortOrder: string = 'Ascending', search: string = '') => {
+  const fetchJellyfinItems = useCallback(async (
+    libraryId: string,
+    sortBy: string = 'Name',
+    sortOrder: string = 'Ascending',
+    search: string = '',
+    limit: number = 50,
+    startIndex: number = 0,
+    includeItemTypes?: string,
+  ): Promise<{ items: any[]; total: number } | null> => {
     try {
-      const params = new URLSearchParams({ sort_by: sortBy, sort_order: sortOrder })
+      const params = new URLSearchParams({
+        sort_by: sortBy,
+        sort_order: sortOrder,
+        limit: String(limit),
+        start_index: String(startIndex),
+      })
       if (search) params.append('search', search)
-      
+      if (includeItemTypes) params.append('include_item_types', includeItemTypes)
       const res = await fetch(`${API_URL}/jellyfin/items/${libraryId}?${params}`)
       if (!res.ok) throw new Error('Failed to fetch Jellyfin items')
       return await res.json()
     } catch (err) {
       showMessage(err instanceof Error ? err.message : 'Failed to fetch Jellyfin items')
+      return null
+    }
+  }, [showMessage])
+
+  const fetchJellyfinSeasons = useCallback(async (seriesId: string): Promise<any[] | null> => {
+    try {
+      const res = await fetch(`${API_URL}/jellyfin/series/${seriesId}/seasons`)
+      if (!res.ok) throw new Error('Failed to fetch seasons')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to fetch seasons')
+      return null
+    }
+  }, [showMessage])
+
+  const fetchJellyfinEpisodes = useCallback(async (seriesId: string, seasonId: string): Promise<any[] | null> => {
+    try {
+      const res = await fetch(`${API_URL}/jellyfin/series/${seriesId}/seasons/${seasonId}/episodes`)
+      if (!res.ok) throw new Error('Failed to fetch episodes')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to fetch episodes')
       return null
     }
   }, [showMessage])
@@ -830,6 +865,8 @@ export function useApi() {
     setMusicVolume,
     fetchJellyfinLibraries,
     fetchJellyfinItems,
+    fetchJellyfinSeasons,
+    fetchJellyfinEpisodes,
     get,
     post,
     delete: deleteRequest,
