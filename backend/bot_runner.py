@@ -343,10 +343,12 @@ def get_bot_status() -> dict[str, Any]:
 def get_now_playing() -> dict[str, Any]:
     """Get currently playing streams."""
     if _bot_instance is None:
+        log.debug("get_now_playing: no bot instance")
         return {"streams": [], "count": 0}
 
     # Handle case where now_playing doesn't exist or is None
     now_playing = getattr(_bot_instance, 'now_playing', None) or {}
+    log.info("get_now_playing: bot=%s entries=%d keys=%s", id(_bot_instance), len(now_playing), list(now_playing.keys()))
 
     streams = []
     for guild_id, info in now_playing.items():
@@ -358,6 +360,7 @@ def get_now_playing() -> dict[str, Any]:
             "started_at": info.get("started_at", ""),
         })
 
+    log.debug("get_now_playing: returning %d streams", len(streams))
     return {"streams": streams, "count": len(streams)}
 
 
@@ -565,6 +568,44 @@ async def join_voice_channel(guild_id: str, channel_id: str) -> dict[str, Any]:
 
     except Exception as e:
         log.error("Failed to join voice channel: %s", e)
+        return {"success": False, "message": f"Error: {str(e)}"}
+
+
+async def stop_voice_playback(guild_id: str) -> dict[str, Any]:
+    """Stop voice playback without leaving the channel.
+
+    Returns success status and message.
+    """
+    if _bot_instance is None:
+        return {"success": False, "message": "Bot is not running"}
+
+    guild = _bot_instance.get_guild(int(guild_id))
+    if guild is None:
+        return {"success": False, "message": "Guild not found"}
+
+    vc = guild.voice_client
+    if not vc:
+        return {"success": False, "message": "Not in a voice channel"}
+
+    try:
+        # Import cancel_stream to stop any ongoing streams
+        from cogs.stream import cancel_stream
+        cancel_stream(_bot_instance, guild.id)
+
+        # Stop any current audio playback
+        if vc.is_playing():
+            vc.stop()
+
+        # Clear now_playing
+        if guild.id in _bot_instance.now_playing:
+            del _bot_instance.now_playing[guild.id]
+
+        # Broadcast update
+        await ws_manager.broadcast("player:now-playing", {"streams": [], "count": 0})
+
+        return {"success": True, "message": "Playback stopped"}
+    except Exception as e:
+        log.error("Failed to stop playback: %s", e)
         return {"success": False, "message": f"Error: {str(e)}"}
 
 
@@ -786,6 +827,8 @@ async def play_soundboard(filepath: str, guild_id: int, channel_id: str | None =
     Returns:
         Dict with success flag and message.
     """
+    from datetime import datetime, timezone
+
     if _bot_instance is None:
         return {"success": False, "message": "Bot is not running"}
 
@@ -811,6 +854,36 @@ async def play_soundboard(filepath: str, guild_id: int, channel_id: str | None =
     from cogs.stream import cancel_stream
     cancel_stream(_bot_instance, guild_id)
 
+    # Get filename for display
+    from pathlib import Path
+    filename = Path(filepath).stem
+
+    # Track what's playing in the dashboard
+    _bot_instance.now_playing[guild_id] = {
+        "title": f"🔊 {filename}",
+        "url": f"soundboard://{Path(filepath).name}",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "guild_name": guild.name,
+        "guild_id": str(guild_id),
+    }
+    log.info("Soundboard now_playing set for guild %s: %s", guild_id, filename)
+
+    # Broadcast immediately so UI shows it
+    try:
+        now_playing_data = {
+            "streams": [{
+                "guild_id": str(guild_id),
+                "guild_name": guild.name,
+                "title": f"🔊 {filename}",
+                "url": f"soundboard://{Path(filepath).name}",
+                "started_at": datetime.now(timezone.utc).isoformat(),
+            }],
+            "count": 1,
+        }
+        await ws_manager.broadcast("player:now-playing", now_playing_data)
+    except Exception as e:
+        log.debug("Failed to broadcast now_playing: %s", e)
+
     # Play the sound
     audio = discord.FFmpegPCMAudio(filepath)
     source = discord.PCMVolumeTransformer(audio, volume=1.0)
@@ -818,6 +891,11 @@ async def play_soundboard(filepath: str, guild_id: int, channel_id: str | None =
     def _after(error: Exception | None):
         if error:
             log.error("Soundboard playback error: %s", error)
+        # Clear now_playing when sound finishes
+        if guild_id in _bot_instance.now_playing:
+            log.info("Soundboard now_playing cleared for guild %s", guild_id)
+            del _bot_instance.now_playing[guild_id]
+        # Note: now_playing will be cleared from UI on next periodic broadcast
 
     vc.play(source, after=_after)
     log.info("Playing soundboard file %s in guild %s", filepath, guild_id)
@@ -865,10 +943,13 @@ async def _broadcast_all_state() -> None:
     # Check now playing
     try:
         current_np = get_now_playing()
+        log.debug("DEBUG _broadcast_all_state: now_playing count=%d", current_np.get("count", 0))
     except Exception:
         current_np = {"streams": [], "count": 0}
+        log.debug("DEBUG _broadcast_all_state: now_playing exception")
     if _last_now_playing != current_np:
         _last_now_playing = current_np
+        log.info("DEBUG _broadcast_all_state: broadcasting now_playing with %d streams", current_np.get("count", 0))
         await ws_manager.broadcast("player:now-playing", current_np)
 
     # Check music status

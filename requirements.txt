@@ -14,3 +14,4 @@ cryptography
 httpx
 python-jose[cryptography]
 python-multipart
+mutagen  # ID3 tag support for soundboard

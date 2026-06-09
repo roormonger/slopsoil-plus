@@ -6,6 +6,7 @@ Allows users to play system soundboard clips in voice channels via chat commands
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -85,9 +86,48 @@ class Soundboard(commands.Cog):
         audio = discord.FFmpegPCMAudio(str(filepath))
         source = discord.PCMVolumeTransformer(audio, volume=1.0)
 
+        # Track what's playing in the dashboard
+        self.bot.now_playing[guild.id] = {
+            "title": f"🔊 {filepath.stem}",
+            "url": f"soundboard://{filepath.name}",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "guild_name": guild.name,
+            "guild_id": str(guild.id),
+        }
+        log.info("Soundboard now_playing set: bot=%s guild=%s total_entries=%d", id(self.bot), guild.id, len(self.bot.now_playing))
+
+        # Broadcast immediately so UI shows it (soundboard clips are short)
+        try:
+            from backend.ws import ws_manager
+            import asyncio
+            now_playing_data = {
+                "streams": [{
+                    "guild_id": str(guild.id),
+                    "guild_name": guild.name,
+                    "title": f"🔊 {filepath.stem}",
+                    "url": f"soundboard://{filepath.name}",
+                    "started_at": datetime.now(timezone.utc).isoformat(),
+                }],
+                "count": 1,
+            }
+            asyncio.create_task(ws_manager.broadcast("player:now-playing", now_playing_data))
+        except Exception as e:
+            log.debug("Failed to broadcast now_playing: %s", e)
+
         def _after(error: Exception | None):
             if error:
                 log.error("Soundboard playback error: %s", error)
+            # Clear now_playing when sound finishes
+            if guild.id in self.bot.now_playing:
+                log.info("Soundboard now_playing cleared for guild %s", guild.id)
+                del self.bot.now_playing[guild.id]
+            # Broadcast clear to UI
+            try:
+                from backend.ws import ws_manager
+                import asyncio
+                asyncio.create_task(ws_manager.broadcast("player:now-playing", {"streams": [], "count": 0}))
+            except Exception:
+                pass
 
         vc.play(source, after=_after)
         await ctx.send(f"🔊 Playing: **{filepath.stem}**")

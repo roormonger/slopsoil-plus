@@ -16,6 +16,7 @@ services:
       - ./soundboard:/app/soundboard
     environment:
       - PORT=3000
+      - JWT_SECRET_KEY=slopsoil-fixed-secret-key-change-in-production
     # GPU device for hardware acceleration (Linux only)
     # devices:
     #   - /dev/dri:/dev/dri

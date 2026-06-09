@@ -107,7 +107,16 @@ class SlopSoil(commands.Bot):
         log.info("logged in as %s (id: %s)", self.user, self.user.id)
         log.info("allowed users: %s", self.allowed_ids or "none (only self)")
         log.info("serving %d guild(s)", len(self.guilds))
-        
+
+        # Signal that bot is ready (for Web UI startup synchronization)
+        try:
+            from backend.bot_runner import _bot_ready_event
+            if not _bot_ready_event.is_set():
+                _bot_ready_event.set()
+                log.info("Bot ready event signaled")
+        except Exception:
+            pass  # Ignore if import fails (circular import protection)
+
         # Check and update avatar URL in database
         try:
             from backend.database import get_setting, set_setting

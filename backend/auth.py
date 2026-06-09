@@ -3,9 +3,9 @@
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from pydantic import BaseModel
@@ -22,7 +22,7 @@ if not SECRET_KEY:
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 7
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 class TokenData(BaseModel):
@@ -65,8 +65,14 @@ def decode_token(token: str) -> TokenData | None:
         return None
 
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> TokenData:
+async def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(security)) -> TokenData:
     """Dependency to get current authenticated user from JWT token."""
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     token = credentials.credentials
     token_data = decode_token(token)
     if token_data is None:
@@ -94,3 +100,33 @@ def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
     if not verify_password(password, user["password_hash"]):
         return None
     return user
+
+
+async def get_current_user_from_query(
+    token: Annotated[str | None, Query()] = None,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+) -> TokenData:
+    """Get current user from query param (for audio playback) or header.
+
+    This supports tokens passed as ?token=XXX query parameter for endpoints
+    that need to be accessed directly by browser elements (like <audio>) which
+    cannot set Authorization headers.
+    """
+    # Try query param first, then fall back to header
+    header_token = credentials.credentials if credentials else None
+    actual_token = token if token else header_token
+    if not actual_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token_data = decode_token(actual_token)
+    if token_data is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return token_data

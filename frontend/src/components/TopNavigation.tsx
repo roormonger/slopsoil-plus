@@ -4,6 +4,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Dropdown } from './ui/dropdown'
 import { useApi } from '../hooks/useApi'
+import { useAuth } from '../context/AuthContext'
 import { useGuild } from '../contexts/GuildContext'
 import { useWebSocketContext } from '../context/WebSocketContext'
 import type { BotStatus, Guild, VoiceChannel } from '../types'
@@ -14,6 +15,7 @@ interface TopNavigationProps {
 
 export default function TopNavigation({ onNavigate }: TopNavigationProps) {
   const api = useApi()
+  const { user } = useAuth()
   const { selectedGuild, selectedVoiceChannel, setSelectedGuild, setSelectedVoiceChannel } = useGuild()
   const { botStatus: wsBotStatus, voiceState, guilds: wsGuilds } = useWebSocketContext()
   const [commandInput, setCommandInput] = useState('')
@@ -301,16 +303,18 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
             })()}
           </Button>
 
-          {/* Reload Bot Button */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleReloadBot}
-            disabled={isLoading}
-            className="h-8 glass-light border-white/10 text-slate-300 hover:bg-white/10 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
-          </Button>
+          {/* Reload Bot Button - admin only */}
+          {user?.role === 'admin' && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleReloadBot}
+              disabled={isLoading}
+              className="h-8 glass-light border-white/10 text-slate-300 hover:bg-white/10 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
+            </Button>
+          )}
         </div>
 
         {/* Right side - Command Input */}

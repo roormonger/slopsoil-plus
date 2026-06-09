@@ -15,6 +15,7 @@ from backend.bot_runner import (
     get_bot_voice_status,
     join_voice_channel,
     leave_voice_channel,
+    stop_voice_playback,
     execute_bot_command,
 )
 from backend.services.discord import fetch_discord_user
@@ -129,6 +130,13 @@ async def join_voice_endpoint(guild_id: str, request: VoiceJoinRequest) -> Voice
 async def leave_voice_endpoint(guild_id: str) -> VoiceActionResponse:
     """Leave voice channel in a guild."""
     result = await leave_voice_channel(guild_id)
+    return VoiceActionResponse(**result)
+
+
+@router.post("/bot/guilds/{guild_id}/stop", response_model=VoiceActionResponse)
+async def stop_playback_endpoint(guild_id: str) -> VoiceActionResponse:
+    """Stop voice playback without leaving the channel."""
+    result = await stop_voice_playback(guild_id)
     return VoiceActionResponse(**result)
 
 

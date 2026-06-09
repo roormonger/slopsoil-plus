@@ -27,6 +27,9 @@ export interface Sound {
   name: string
   filename: string
   path: string
+  tags: string[]
+  duration?: number
+  has_cover_art?: boolean
 }
 
 // New interface for settings with source info from API
@@ -93,7 +96,7 @@ export interface CommandStats {
 }
 
 export interface NowPlaying {
-  guild_id: number
+  guild_id: string
   guild_name: string
   title: string
   url: string

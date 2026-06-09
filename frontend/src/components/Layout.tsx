@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, Settings, Tv, Bookmark, Volume2, Music, PlayCircle, LogOut, User } from 'lucide-react'
+import { LayoutDashboard, Users, Settings, Tv, Bookmark, Volume2, Music, PlayCircle, LogOut, User, Tags } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 interface LayoutProps {
@@ -45,9 +45,14 @@ export function Layout({ children }: LayoutProps) {
           <SidebarItem to="/soundboard" icon={Volume2} label="Soundboard" />
           <SidebarItem to="/music" icon={Music} label="Music" />
 
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 px-4 mt-6">System</div>
-          <SidebarItem to="/users" icon={Users} label="Users" />
-          <SidebarItem to="/settings" icon={Settings} label="Settings" />
+          {user?.role === 'admin' && (
+            <>
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 px-4 mt-6">System</div>
+              <SidebarItem to="/users" icon={Users} label="Users" />
+              <SidebarItem to="/soundboard-manager" icon={Tags} label="Manage Soundboard" />
+              <SidebarItem to="/settings" icon={Settings} label="Settings" />
+            </>
+          )}
         </nav>
 
         {user && (

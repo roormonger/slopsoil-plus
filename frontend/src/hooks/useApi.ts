@@ -157,6 +157,16 @@ export function useApi() {
     }
   }, [showMessage])
 
+  const stopVoicePlayback = useCallback(async (guildId: string): Promise<{ success: boolean; message: string } | null> => {
+    try {
+      const res = await fetch(`${API_URL}/bot/guilds/${guildId}/stop`, { method: 'POST' })
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to stop playback')
+      return null
+    }
+  }, [showMessage])
+
   const executeCommand = useCallback(async (guildId: string, command: string, args: string, channelId: string = ''): Promise<CommandResult | null> => {
     try {
       const res = await fetch(`${API_URL}/bot/guilds/${guildId}/execute`, {
@@ -544,6 +554,250 @@ export function useApi() {
     }
   }, [showMessage])
 
+  const fetchSoundTags = useCallback(async (filename: string, type: 'system' | 'personal'): Promise<string[] | null> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const endpoint = type === 'system' ? 'system' : 'mine'
+      const res = await fetch(`${API_URL}/soundboard/${endpoint}/${encodeURIComponent(filename)}/tags`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+      if (!res.ok) throw new Error('Failed to fetch sound tags')
+      const data = await res.json()
+      return data.tags
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to fetch tags')
+      return null
+    }
+  }, [showMessage])
+
+  const updateSoundTags = useCallback(async (filename: string, type: 'system' | 'personal', tags: string[]): Promise<string[] | null> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const endpoint = type === 'system' ? 'system' : 'mine'
+      const res = await fetch(`${API_URL}/soundboard/${endpoint}/${encodeURIComponent(filename)}/tags`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ tags }),
+      })
+      if (!res.ok) throw new Error('Failed to update tags')
+      const data = await res.json()
+      return data.tags
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to update tags')
+      return null
+    }
+  }, [showMessage])
+
+  const getSoundAudioUrl = useCallback((filename: string, type: 'system' | 'personal'): string => {
+    const token = localStorage.getItem('slopsoil_token')
+    const endpoint = type === 'system' ? 'system' : 'mine'
+    const url = `${API_URL}/soundboard/${endpoint}/${encodeURIComponent(filename)}/audio`
+    return token ? `${url}?token=${encodeURIComponent(token)}` : url
+  }, [])
+
+  const fetchUsers = useCallback(async (): Promise<User[] | null> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const res = await fetch(`${API_URL}/users`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+      if (!res.ok) throw new Error('Failed to fetch users')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to fetch users')
+      return null
+    }
+  }, [showMessage])
+
+  const fetchUsersWithSounds = useCallback(async (): Promise<{ user_id: string; username: string }[] | null> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const res = await fetch(`${API_URL}/soundboard/users-with-sounds`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+      if (!res.ok) throw new Error('Failed to fetch users with sounds')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to fetch users with sounds')
+      return null
+    }
+  }, [showMessage])
+
+  const fetchUserSounds = useCallback(async (userId: string): Promise<Sound[] | null> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const res = await fetch(`${API_URL}/soundboard/users/${encodeURIComponent(userId)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+      if (!res.ok) throw new Error('Failed to fetch user sounds')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to fetch user sounds')
+      return null
+    }
+  }, [showMessage])
+
+  const updateUserSoundTags = useCallback(async (userId: string, filename: string, tags: string[]): Promise<string[] | null> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const res = await fetch(`${API_URL}/soundboard/users/${encodeURIComponent(userId)}/${encodeURIComponent(filename)}/tags`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ tags }),
+      })
+      if (!res.ok) throw new Error('Failed to update tags')
+      const data = await res.json()
+      return data.tags
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to update tags')
+      return null
+    }
+  }, [showMessage])
+
+  const deleteUserSound = useCallback(async (userId: string, filename: string): Promise<boolean> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const res = await fetch(`${API_URL}/soundboard/users/${encodeURIComponent(userId)}/${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+      if (!res.ok) throw new Error('Failed to delete sound')
+      return true
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to delete sound')
+      return false
+    }
+  }, [showMessage])
+
+  const getUserSoundAudioUrl = useCallback((userId: string, filename: string): string => {
+    const token = localStorage.getItem('slopsoil_token')
+    const url = `${API_URL}/soundboard/users/${encodeURIComponent(userId)}/${encodeURIComponent(filename)}/audio`
+    return token ? `${url}?token=${encodeURIComponent(token)}` : url
+  }, [])
+
+  const updateSystemSoundCover = useCallback(async (filename: string, imageFile: File): Promise<boolean> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const form = new FormData()
+      form.append('file', imageFile)
+      const res = await fetch(`${API_URL}/soundboard/system/${encodeURIComponent(filename)}/cover`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      })
+      if (!res.ok) throw new Error('Failed to update cover art')
+      return true
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to update cover art')
+      return false
+    }
+  }, [showMessage])
+
+  const renameSystemSound = useCallback(async (filename: string, newName: string): Promise<Sound | null> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const res = await fetch(`${API_URL}/soundboard/system/${encodeURIComponent(filename)}/rename`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ new_name: newName }),
+      })
+      if (!res.ok) throw new Error('Failed to rename sound')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to rename sound')
+      return null
+    }
+  }, [showMessage])
+
+  const updateUserSoundCover = useCallback(async (userId: string, filename: string, imageFile: File): Promise<boolean> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const form = new FormData()
+      form.append('file', imageFile)
+      const res = await fetch(`${API_URL}/soundboard/users/${encodeURIComponent(userId)}/${encodeURIComponent(filename)}/cover`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      })
+      if (!res.ok) throw new Error('Failed to update cover art')
+      return true
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to update cover art')
+      return false
+    }
+  }, [showMessage])
+
+  const renameUserSound = useCallback(async (userId: string, filename: string, newName: string): Promise<Sound | null> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const res = await fetch(`${API_URL}/soundboard/users/${encodeURIComponent(userId)}/${encodeURIComponent(filename)}/rename`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ new_name: newName }),
+      })
+      if (!res.ok) throw new Error('Failed to rename sound')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to rename sound')
+      return null
+    }
+  }, [showMessage])
+
+  const updatePersonalSoundCover = useCallback(async (filename: string, imageFile: File): Promise<boolean> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const form = new FormData()
+      form.append('file', imageFile)
+      const res = await fetch(`${API_URL}/soundboard/mine/${encodeURIComponent(filename)}/cover`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      })
+      if (!res.ok) throw new Error('Failed to update cover art')
+      return true
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to update cover art')
+      return false
+    }
+  }, [showMessage])
+
+  const renamePersonalSound = useCallback(async (filename: string, newName: string): Promise<Sound | null> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const res = await fetch(`${API_URL}/soundboard/mine/${encodeURIComponent(filename)}/rename`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ new_name: newName }),
+      })
+      if (!res.ok) throw new Error('Failed to rename sound')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to rename sound')
+      return null
+    }
+  }, [showMessage])
+
+  const getUserSoundCoverUrl = useCallback((userId: string, filename: string): string => {
+    const token = localStorage.getItem('slopsoil_token')
+    const url = `${API_URL}/soundboard/users/${encodeURIComponent(userId)}/${encodeURIComponent(filename)}/cover`
+    return token ? `${url}?token=${encodeURIComponent(token)}` : url
+  }, [])
+
   return {
     error,
     success,
@@ -557,6 +811,7 @@ export function useApi() {
     reloadBot,
     joinVoiceChannel,
     leaveVoiceChannel,
+    stopVoicePlayback,
     executeCommand,
     saveConfig,
     fetchIptvSources,
@@ -585,5 +840,21 @@ export function useApi() {
     deleteSystemSound,
     deletePersonalSound,
     playSound,
+    fetchSoundTags,
+    updateSoundTags,
+    getSoundAudioUrl,
+    fetchUsers,
+    fetchUsersWithSounds,
+    fetchUserSounds,
+    updateUserSoundTags,
+    deleteUserSound,
+    getUserSoundAudioUrl,
+    getUserSoundCoverUrl,
+    updatePersonalSoundCover,
+    renamePersonalSound,
+    updateSystemSoundCover,
+    renameSystemSound,
+    updateUserSoundCover,
+    renameUserSound,
   }
 }

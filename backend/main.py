@@ -147,26 +147,29 @@ async def main() -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, _shutdown_event.set)
 
-    # Start services concurrently
-    tasks = [
-        asyncio.create_task(start_web_server()),
-        asyncio.create_task(start_bot()),
-    ]
+    # Start the web server (runs forever)
+    web_task = asyncio.create_task(start_web_server())
 
-    # Wait for shutdown signal or any task to complete
-    shutdown_task = asyncio.create_task(_shutdown_event.wait())
-    done, pending = await asyncio.wait(
-        tasks + [shutdown_task],
-        return_when=asyncio.FIRST_COMPLETED
-    )
-
-    # Cancel remaining tasks
-    for task in pending:
-        task.cancel()
+    # Start the bot and wait for it to be ready
+    bot_started = await start_bot()
+    if not bot_started:
+        log.error("Failed to start bot, shutting down")
+        web_task.cancel()
         try:
-            await task
+            await web_task
         except asyncio.CancelledError:
             pass
+        return
+
+    # Wait for shutdown signal
+    await _shutdown_event.wait()
+
+    # Cancel web server
+    web_task.cancel()
+    try:
+        await web_task
+    except asyncio.CancelledError:
+        pass
 
     # Gracefully stop the bot (disconnects from voice channels)
     log.info("Shutting down gracefully...")

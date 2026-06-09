@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Loader2, Radio, Users, Zap, Music2, Video, MessageSquare, Globe, Trophy, Settings, Activity, Signal, Tv, Bookmark } from 'lucide-react'
+import { Loader2, Radio, Users, Zap, Music2, Video, MessageSquare, Globe, Trophy, Settings, Activity, Signal, Tv, Bookmark, Volume2, Square } from 'lucide-react'
 import { Badge } from '../components/ui/badge'
 import { useApi } from '../hooks/useApi'
 import { useWebSocketContext } from '../context/WebSocketContext'
@@ -10,6 +10,7 @@ export function Dashboard() {
   const { botStatus: wsBotStatus, nowPlaying: wsNowPlaying, musicStatus: wsMusicStatus } = useWebSocketContext()
   const [status, setStatus] = useState<BotStatus | null>(null)
   const [nowPlaying, setNowPlaying] = useState<NowPlaying[]>([])
+  const [stoppingGuild, setStoppingGuild] = useState<string | null>(null)
   const [musicStatus, setMusicStatus] = useState<MusicStatus | null>(null)
   const [commandStats, setCommandStats] = useState<CommandStats | null>(null)
   const [config, setConfig] = useState<Config | null>(null)
@@ -189,41 +190,70 @@ export function Dashboard() {
       </div>
 
       
-      {/* Video Now Playing */}
+      {/* Now Playing - Video, Soundboard, etc. */}
       <div className="glass-card rounded-2xl p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-xl font-semibold text-slate-200 flex items-center gap-2">
-              <Video className="w-5 h-5 text-primary" />
-              Video Now Playing
+              <Activity className="w-5 h-5 text-primary" />
+              Now Playing
             </h3>
-            <p className="text-sm text-slate-400">Currently streaming videos</p>
+            <p className="text-sm text-slate-400">Currently streaming or playing in voice channels</p>
           </div>
           <Badge className="glass-light border-white/10 text-slate-300">Live</Badge>
         </div>
 
         {nowPlaying.length === 0 ? (
           <div className="p-8 text-center glass-light rounded-xl">
-            <Video className="w-8 h-8 text-slate-500 mx-auto mb-3" />
-            <p className="text-slate-400">No videos are currently streaming</p>
+            <Activity className="w-8 h-8 text-slate-500 mx-auto mb-3" />
+            <p className="text-slate-400">Nothing is currently playing</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {nowPlaying.map((stream) => (
-              <div
-                key={stream.guild_id}
-                className="flex items-center justify-between p-4 glass-light rounded-xl hover-lift border-l-4 border-primary"
-              >
-                <div>
-                  <p className="font-medium text-slate-200">{stream.title}</p>
-                  <p className="text-sm text-slate-400">{stream.guild_name}</p>
+            {nowPlaying.map((stream) => {
+              // Determine icon based on content type
+              const isSoundboard = stream.url?.startsWith('soundboard://')
+              const Icon = isSoundboard ? Volume2 : Video
+              const badgeText = isSoundboard ? 'Soundboard' : 'Streaming'
+              const badgeColor = isSoundboard ? 'bg-amber-500' : 'bg-red-500'
+
+              const handleStop = async () => {
+                setStoppingGuild(stream.guild_id)
+                await api.stopVoicePlayback(stream.guild_id)
+                setStoppingGuild(null)
+              }
+
+              return (
+                <div
+                  key={stream.guild_id}
+                  className="flex items-center justify-between p-4 glass-light rounded-xl hover-lift border-l-4 border-primary"
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className="w-5 h-5 text-slate-400" />
+                    <div>
+                      <p className="font-medium text-slate-200">{stream.title}</p>
+                      <p className="text-sm text-slate-400">{stream.guild_name}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${badgeColor} status-pulse`} />
+                    <Badge className="glass-light border-white/10 text-slate-300">{badgeText}</Badge>
+                    <button
+                      onClick={handleStop}
+                      disabled={stoppingGuild === stream.guild_id}
+                      className="p-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors disabled:opacity-50"
+                      title="Stop playback"
+                    >
+                      {stoppingGuild === stream.guild_id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Square className="w-4 h-4 fill-current" />
+                      )}
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-red-500 status-pulse" />
-                  <Badge className="glass-light border-white/10 text-slate-300">Streaming</Badge>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
