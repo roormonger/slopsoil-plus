@@ -17,10 +17,22 @@ FROM fedora:44
 # working host environment exactly.  Do NOT swap this for RPM Fusion's
 # `ffmpeg` package: it ships a different FFmpeg version with libx264, and
 # libx264's output currently causes Discord to drop the stream after one frame.
+#
+# VA-API hardware H.264 encode requires a vendor-specific userspace driver:
+#   AMD  → mesa-va-drivers-freeworld (RPM Fusion free)
+#   Intel Gen8+ (UHD Graphics) → intel-media-driver / iHD (RPM Fusion nonfree)
+# Without the matching driver the h264_vaapi probe fails and the bot silently
+# falls back to the libopenh264 software encoder.  libva auto-selects the right
+# driver from the /dev/dri PCI ID, so we install both and do NOT hardcode
+# LIBVA_DRIVER_NAME (that would break whichever vendor isn't the forced one).
 RUN dnf install -y \
         ffmpeg-free \
+        libva-utils \
         python3 \
         python3-pip \
+        https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-44.noarch.rpm \
+        https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-44.noarch.rpm \
+    && dnf install -y --allowerasing mesa-va-drivers-freeworld intel-media-driver \
     && dnf clean all \
     && rm -rf /var/cache/dnf
 

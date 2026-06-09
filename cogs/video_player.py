@@ -497,25 +497,33 @@ def _detect_encoder() -> _EncoderConfig | None:
             vf=f"scale={_RESOLUTION}",
         )
 
-    if "h264_vaapi" in available and _test_encoder("h264_vaapi", vaapi_pre):
-        log.info("video encoder: h264_vaapi (VA-API)")
-        return _EncoderConfig(
-            name="h264_vaapi",
-            pre_input=vaapi_pre,
-            post_codec=[
-                "-rc_mode",
-                "CBR",
-                "-profile:v",
-                "high",
-                "-level",
-                "42",
-                "-aud",
-                "1",
-                "-b:v",
-                _BITRATE,
-            ],
-            vf=f"format=nv12,hwupload,scale_vaapi={_RESOLUTION}",
-        )
+    if "h264_vaapi" in available:
+        if _test_encoder("h264_vaapi", vaapi_pre):
+            log.info("video encoder: h264_vaapi (VA-API hardware)")
+            return _EncoderConfig(
+                name="h264_vaapi",
+                pre_input=vaapi_pre,
+                post_codec=[
+                    "-rc_mode",
+                    "CBR",
+                    "-profile:v",
+                    "high",
+                    "-level",
+                    "42",
+                    "-aud",
+                    "1",
+                    "-b:v",
+                    _BITRATE,
+                ],
+                vf=f"format=nv12,hwupload,scale_vaapi={_RESOLUTION}",
+            )
+        else:
+            log.warning(
+                "h264_vaapi is compiled in but the VA-API probe failed — falling back to "
+                "software. Likely a missing GPU driver (AMD needs mesa-va-drivers-freeworld, "
+                "Intel needs intel-media-driver) or no /dev/dri access. "
+                "Run `vainfo` in the container to diagnose."
+            )
 
     if "libopenh264" in available and _test_encoder("libopenh264", []):
         log.info("video encoder: libopenh264 (software)")
@@ -540,7 +548,8 @@ def _detect_encoder() -> _EncoderConfig | None:
     log.warning(
         "no working H.264 encoder found — video streaming disabled. "
         "Ensure ffmpeg-free (or equivalent) is installed with libopenh264, "
-        "or that VA-API/NVENC drivers are functional."
+        "or that VA-API/NVENC drivers are functional (AMD needs mesa-va-drivers-freeworld, "
+        "Intel needs intel-media-driver)."
     )
     return None
 
