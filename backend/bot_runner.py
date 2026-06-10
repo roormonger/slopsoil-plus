@@ -440,6 +440,36 @@ def get_bot_guilds() -> list[dict[str, Any]]:
     return guilds
 
 
+def get_bot_guilds_for_user(discord_id: str | None, is_admin: bool = False) -> list[dict[str, Any]]:
+    """Get guilds filtered to only those the given Discord user is a member of.
+
+    Admins see all guilds regardless of membership.
+    Users with no linked Discord ID see no guilds.
+    Uses the passive member cache — no network requests made.
+    """
+    if is_admin:
+        return get_bot_guilds()
+
+    if not discord_id or _bot_instance is None:
+        return []
+
+    try:
+        uid = int(discord_id)
+    except (ValueError, TypeError):
+        return []
+
+    filtered = []
+    for guild in _bot_instance.guilds:
+        if guild.get_member(uid) is not None:
+            icon_url = str(guild.icon.url) if guild.icon else None
+            filtered.append({
+                "id": str(guild.id),
+                "name": guild.name,
+                "icon_url": icon_url,
+            })
+    return filtered
+
+
 def get_guild_voice_channels(guild_id: str) -> list[dict[str, Any]] | None:
     """Get voice channels for a specific guild.
 

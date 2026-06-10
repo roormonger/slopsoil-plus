@@ -31,7 +31,7 @@ class UserCreateRequest(BaseModel):
     password: str
     role: str = "user"
     avatar: str | None = None
-    discord_id: str | None = None
+    discord_id: str
 
 
 class UserUpdateRequest(BaseModel):
@@ -70,11 +70,10 @@ async def create_new_user(user_request: UserCreateRequest):
         if existing_user:
             raise HTTPException(status_code=400, detail="Username already exists")
         
-        # Check if Discord ID already exists (if provided)
-        if user_request.discord_id:
-            existing_discord_user = get_user_by_discord_id(user_request.discord_id)
-            if existing_discord_user:
-                raise HTTPException(status_code=400, detail="Discord ID already exists")
+        # Check if Discord ID already exists
+        existing_discord_user = get_user_by_discord_id(user_request.discord_id)
+        if existing_discord_user:
+            raise HTTPException(status_code=400, detail="Discord ID already exists")
         
         # Hash password using bcrypt
         password_hash = hash_password(user_request.password)

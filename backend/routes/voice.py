@@ -6,11 +6,12 @@ Handles voice channel management, guild listing, and command execution.
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.bot_runner import (
     get_bot_guilds,
+    get_bot_guilds_for_user,
     get_guild_voice_channels,
     get_bot_voice_status,
     join_voice_channel,
@@ -19,7 +20,7 @@ from backend.bot_runner import (
     execute_bot_command,
 )
 from backend.services.discord import fetch_discord_user
-from backend.auth import get_current_user
+from backend.auth import get_current_user, TokenData
 from backend.database import get_user_by_user_id
 
 log = logging.getLogger(__name__)
@@ -97,9 +98,12 @@ class DiscordUserLookupResponse(BaseModel):
 
 
 @router.get("/bot/guilds", response_model=GuildsListResponse)
-async def get_guilds_endpoint() -> GuildsListResponse:
-    """Get list of guilds the bot is connected to."""
-    guilds = get_bot_guilds()
+async def get_guilds_endpoint(current_user: TokenData = Depends(get_current_user)) -> GuildsListResponse:
+    """Get list of guilds the bot is connected to, filtered by the requesting user's Discord membership."""
+    is_admin = current_user.role == "admin"
+    db_user = get_user_by_user_id(current_user.user_id) if current_user.user_id else None
+    discord_id = db_user.get("discord_id") if db_user else None
+    guilds = get_bot_guilds_for_user(discord_id=discord_id, is_admin=is_admin)
     return GuildsListResponse(guilds=[GuildResponse(**g) for g in guilds])
 
 

@@ -146,8 +146,14 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
 
   const botStatus = wsBotStatus || initialBotStatus
 
-  // Prefer WS guilds, fall back to HTTP
-  const effectiveGuilds = wsGuilds.length > 0 ? wsGuilds : httpGuilds
+  // The HTTP guild list is authoritative for which guilds this user is allowed to see.
+  // WS guilds carry up-to-date voice channel data, so we use them but filter to
+  // only the IDs returned by the authenticated HTTP fetch.
+  const allowedGuildIds = new Set(httpGuilds.map(g => g.id))
+  const filteredWsGuilds = wsGuilds.filter(g => allowedGuildIds.has(g.id))
+  const effectiveGuilds = httpGuilds.length === 0
+    ? []
+    : filteredWsGuilds.length > 0 ? filteredWsGuilds : httpGuilds
 
   // Auto-select guild when guilds arrive or saved guild becomes invalid
   useEffect(() => {

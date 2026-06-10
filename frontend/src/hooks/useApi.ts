@@ -73,7 +73,10 @@ export function useApi() {
 
   const fetchGuilds = useCallback(async (): Promise<Guild[] | null> => {
     try {
-      const res = await fetch(`${API_URL}/bot/guilds`)
+      const token = localStorage.getItem('slopsoil_token')
+      const res = await fetch(`${API_URL}/bot/guilds`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
       if (!res.ok) throw new Error('Failed to fetch guilds')
       const data = await res.json()
       return data.guilds
