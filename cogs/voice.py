@@ -100,33 +100,53 @@ class Voice(commands.Cog):
 
     @require_role(Role.FRIEND)
     @commands.command()
-    async def stop(self, ctx: commands.Context):
+    async def stop(self, ctx: commands.Context, target: str | None = None):
+        """Stop playback. Use !stop video or !stop audio to target one when both are active."""
         guild, _, vc = await resolve_voice(ctx)
 
-        if not guild or not vc:
-            log.debug("stop rejected: nothing playing (guild: %s)", guild)
+        if not guild:
             await ctx.send("nothing is playing")
             return
 
-        if not vc.is_playing() and guild.id not in self.bot.stream_tasks:
-            log.debug("stop rejected: nothing playing (guild: %s)", guild)
+        video_active = guild.id in self.bot.stream_tasks
+        audio_active = vc is not None and (vc.is_playing() or vc.is_paused()) and guild.id in getattr(self.bot, "music_current", {})
+
+        # Normalise target
+        target = (target or "").lower().strip()
+        if target not in ("", "video", "audio"):
+            await ctx.send("Usage: `!stop`, `!stop video`, or `!stop audio`")
+            return
+
+        # If both are active and no target given, ask for clarification
+        if video_active and audio_active and not target:
+            await ctx.send(
+                "Both video and audio are active. Use `!stop video` or `!stop audio` to choose."
+            )
+            return
+
+        stop_video = target == "video" or (not target and video_active)
+        stop_audio = target == "audio" or (not target and audio_active)
+
+        if not stop_video and not stop_audio:
             await ctx.send("nothing is playing")
             return
 
-        log.info("stopping stream in guild '%s'", guild)
-        cancel_stream(self.bot, guild.id)
-        if vc.is_playing():
-            vc.stop()
+        if stop_video:
+            log.info("stopping video stream in guild '%s'", guild)
+            cancel_stream(self.bot, guild.id)
+            live_conn = self.bot.live_connections.pop(guild.id, None)
+            if live_conn is not None:
+                try:
+                    await live_conn.disconnect()
+                except Exception:
+                    log.warning("error disconnecting go-live on stop", exc_info=True)
 
-        # Explicitly disconnect any active go-live stream. The task's finally
-        # block also does this, but the task may have already finished (e.g.
-        # the video player died early) leaving the GoLiveConnection open.
-        live_conn = self.bot.live_connections.pop(guild.id, None)
-        if live_conn is not None:
-            try:
-                await live_conn.disconnect()
-            except Exception:
-                log.warning("error disconnecting go-live on stop", exc_info=True)
+        if stop_audio:
+            log.info("stopping audio in guild '%s'", guild)
+            if vc and vc.is_playing():
+                vc.stop()
+            getattr(self.bot, "music_queues", {}).pop(guild.id, None)
+            getattr(self.bot, "music_current", {}).pop(guild.id, None)
 
         await ctx.send("stopped")
 

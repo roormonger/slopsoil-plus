@@ -245,7 +245,7 @@ JELLYFIN_API_KEY=your_api_key_here
 | `JELLYFIN_URL` | No | Base URL of your Jellyfin server |
 | `JELLYFIN_API_KEY` | No | Jellyfin API key (generate in Dashboard → API Keys) |
 
-TVheadend is optional. If any of the three `TVHEADEND_*` variables are missing, the `!channels`, `!search`, and TVheadend-backed `!play` commands are not loaded.
+TVheadend is optional. If any of the three `TVHEADEND_*` variables are missing, the `!channels`, `!search`, and TVheadend-backed `!tv` commands are not loaded.
 
 ### Finding your Discord token
 
@@ -260,29 +260,51 @@ TVheadend is optional. If any of the three `TVHEADEND_*` variables are missing, 
 
 ## Commands
 
-### Voice
+Commands are split by content type. Video commands stream via Discord's screenshare (go-live). Audio commands play through the voice channel audio.
+
+### Voice Lifecycle
 
 | Command | Role | Description |
 |---|---|---|
 | `!join` | Friend | Join your current voice channel |
 | `!leave` | Friend | Leave the voice channel |
-| `!stop` | Friend | Stop the active stream |
 
-### Streaming
-
-| Command | Role | Description |
-|---|---|---|
-| `!play <channel number>` | Friend | Play a TVheadend channel by number |
-| `!play <channel name>` | Friend | Play a channel by name (case-insensitive substring match; searches TVheadend and IPTV) |
-| `!play <URL>` | Friend | Play any URL — YouTube VODs, YouTube Live streams, direct HLS/HTTP/RTSP streams, `.cgi` MJPEG feeds, etc. Live streams are detected automatically and streamed without downloading. |
-| `!channels` | Viewer | List all available channels with live now-playing info (paginated) |
-| `!search <show title>` | Friend | Search EPG for a show — plays immediately if airing now, or schedules for upcoming airtime. Showtimes are shown in the `TIMEZONE` configured in `.env`. |
-
-### Jellyfin
+### Stop
 
 | Command | Role | Description |
 |---|---|---|
-| `!media <title>` | Friend | Search Jellyfin for a movie or series and stream it into your voice channel. A single movie match plays immediately. For series, the bot walks you through season → episode selection. Accepts an optional `sXXeYY` suffix (e.g. `!media breaking bad s03e05`) to jump directly to a specific episode. Transcoding is handled server-side by Jellyfin; subtitles are always suppressed. |
+| `!stop` | Friend | Stop all active playback. If both video and audio are running simultaneously, the bot will ask you to specify. |
+| `!stop video` | Friend | Stop the active video stream only |
+| `!stop audio` | Friend | Stop audio/music playback only |
+
+### Video Commands (screenshare)
+
+| Command | Role | Description |
+|---|---|---|
+| `!tv <channel number>` | Friend | Play a TVheadend channel by number |
+| `!tv <channel name>` | Friend | Play a channel by name (searches TVheadend then IPTV) |
+| `!tv <URL>` | Friend | Play any URL — YouTube VODs, YouTube Live, HLS/HTTP/RTSP streams, `.cgi` MJPEG feeds, etc. Live streams are detected automatically and streamed without downloading. |
+| `!bm <name>` | Friend | Play a saved bookmark by name (fuzzy match) |
+| `!jf <title>` | Friend | Search Jellyfin for a movie or series and stream it. A single match plays immediately; series walks you through season → episode selection. Accepts `sXXeYY` suffix (e.g. `!jf breaking bad s03e05`). Transcoding is server-side; subtitles suppressed. |
+| `!channels` | Viewer | List all available TV/IPTV channels with live now-playing info (paginated) |
+| `!search <show title>` | Friend | Search EPG for a show — plays immediately if airing now, or schedules for upcoming airtime. Showtimes shown in the `TIMEZONE` from `.env`. |
+
+### Audio Commands (voice audio)
+
+| Command | Role | Description |
+|---|---|---|
+| `!audio <url>` | Friend | Play a URL or YouTube link through voice audio |
+| `!audio search <query>` | Friend | Search YouTube and play the first result |
+| `!audio stop` | Friend | Stop audio playback and clear the queue |
+| `!audio skip` | Friend | Skip to the next track in the queue |
+| `!audio back` | Friend | Go back to the previous track |
+| `!audio queue` | Friend | Show the current queue |
+| `!audio pause` | Friend | Pause playback |
+| `!audio resume` | Friend | Resume paused playback |
+| `!audio volume <0-100>` | Friend | Set playback volume |
+| `!audio now` | Friend | Show what's currently playing |
+| `!sb <name>` | Friend | Play a soundboard clip by name |
+| `!sb list` | Friend | List available soundboard clips |
 
 ### IPTV Source Management
 

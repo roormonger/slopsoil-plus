@@ -165,12 +165,12 @@ export function Jellyfin() {
 
   const handlePlayItem = async (item: JellyfinItem | any) => {
     if (!selectedGuild) return
-    await api.executeCommand(selectedGuild, 'media', item.Name, selectedVoiceChannel)
+    await api.executeCommand(selectedGuild, 'jf', item.Name, selectedVoiceChannel)
   }
 
   const handleAddToQueue = async (item: JellyfinItem | any) => {
     if (!selectedGuild) return
-    await api.executeCommand(selectedGuild, 'queue', item.Name, selectedVoiceChannel)
+    await api.executeCommand(selectedGuild, 'jf', item.Name, selectedVoiceChannel)
   }
 
   const handleBookmarkItem = async (item: JellyfinItem | any) => {

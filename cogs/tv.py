@@ -630,11 +630,37 @@ class TV(commands.Cog):
 
     @require_role(Role.FRIEND)
     @commands.command()
-    async def play(self, ctx: commands.Context, *, query: str):
+    async def bm(self, ctx: commands.Context, *, name: str):
+        """Play a bookmark by name. Usage: !bm <name>"""
+        guild, voice_channel, vc = await resolve_voice(ctx)
+
+        if not voice_channel:
+            await ctx.send("you're not in a voice channel")
+            return
+
+        assert guild is not None
+
+        from backend.database import get_bookmarks
+        bookmarks = get_bookmarks()
+        q = name.lower()
+        for bm in bookmarks:
+            if q in bm["name"].lower():
+                log.info("bm: matched bookmark '%s' (%s)", bm["name"], bm["url"])
+                self._cancel_schedule(guild.id)
+                await self._handle_url(
+                    ctx.send, guild, voice_channel, vc, bm["url"], str(ctx.author)
+                )
+                return
+
+        await ctx.send(f"bookmark not found: `{name}`")
+
+    @require_role(Role.FRIEND)
+    @commands.command()
+    async def tv(self, ctx: commands.Context, *, query: str):
         """
-        Stream a channel or URL into your voice channel.
-        Pass a URL to download and stream via yt-dlp (!play https://...).
-        Match a TVheadend/IPTV channel by number or name (!play BBC One).
+        Stream a TV channel or URL into your voice channel.
+        Pass a URL to stream via yt-dlp (!tv https://...).
+        Match a TVheadend/IPTV channel by number or name (!tv BBC One).
         """
         guild, voice_channel, vc = await resolve_voice(ctx)
 
@@ -651,7 +677,7 @@ class TV(commands.Cog):
 
         if query.startswith(("http://", "https://")):
             log.info(
-                "play: URL detected (requested by %s in guild '%s')",
+                "tv: URL detected (requested by %s in guild '%s')",
                 ctx.author,
                 guild,
             )
@@ -661,7 +687,7 @@ class TV(commands.Cog):
             return
 
         log.info(
-            "looking up channel for query %r (requested by %s in guild '%s')",
+            "tv: looking up channel for query %r (requested by %s in guild '%s')",
             query,
             ctx.author,
             guild,
@@ -708,21 +734,8 @@ class TV(commands.Cog):
             )
             return
 
-        # Check bookmarks as last resort
-        from backend.database import get_bookmarks
-        bookmarks = get_bookmarks()
-        q = query.lower()
-        for bm in bookmarks:
-            if q in bm["name"].lower():
-                log.info("matched bookmark: '%s' (%s)", bm["name"], bm["url"])
-                self._cancel_schedule(guild.id)
-                await self._handle_url(
-                    ctx.send, guild, voice_channel, vc, bm["url"], str(ctx.author)
-                )
-                return
-
         log.info(
-            "no channel matched query %r (searched %d TVH + IPTV + bookmarks)", query, len(chs)
+            "tv: no channel matched query %r (searched %d TVH + IPTV)", query, len(chs)
         )
         await ctx.send(
             f"channel not found: `{query}`"

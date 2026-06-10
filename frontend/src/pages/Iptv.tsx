@@ -59,7 +59,7 @@ export function Iptv() {
       api.showMessage('Please select a voice channel from the top navigation first', 'error')
       return
     }
-    await api.executeCommand(selectedGuild, 'play', channelName, selectedVoiceChannel)
+    await api.executeCommand(selectedGuild, 'tv', channelName, selectedVoiceChannel)
   }
 
   const handleToggle = async (name: string, enabled: boolean) => {

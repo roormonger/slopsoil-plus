@@ -427,7 +427,7 @@ class Jellyfin(commands.Cog):
 
     @require_role(Role.FRIEND)
     @commands.command()
-    async def media(self, ctx: commands.Context, *, query: str) -> None:
+    async def jf(self, ctx: commands.Context, *, query: str) -> None:
         """
         Search Jellyfin for a movie, series, or episode.
         Accepts an optional sXXeYY suffix to target a specific episode directly.

@@ -40,7 +40,7 @@ export function Bookmarks() {
       api.showMessage('Please select a voice channel from the top navigation first', 'error')
       return
     }
-    await api.executeCommand(selectedGuild, 'play', url, selectedVoiceChannel)
+    await api.executeCommand(selectedGuild, 'tv', url, selectedVoiceChannel)
   }
 
   const handleDelete = async (id: number) => {

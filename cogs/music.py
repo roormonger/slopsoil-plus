@@ -6,16 +6,16 @@ standard discord.py voice client (FFmpegPCMAudio), independent of
 the video streaming/screenshare system.
 
 Commands:
-  !music <url>        - Play or queue a YouTube URL
-  !music search <q>   - Search YouTube and play first result
-  !music stop         - Stop playback and clear queue
-  !music skip         - Skip to next track
-  !music back         - Go back to previous track
-  !music queue        - Show current queue
-  !music pause        - Pause playback
-  !music resume       - Resume playback
-  !music volume <0-100> - Set volume
-  !music now          - Show currently playing
+  !audio <url>          - Play or queue a URL/YouTube link
+  !audio search <q>     - Search YouTube and play first result
+  !audio stop           - Stop playback and clear queue
+  !audio skip           - Skip to next track
+  !audio back           - Go back to previous track
+  !audio queue          - Show current queue
+  !audio pause          - Pause playback
+  !audio resume         - Resume playback
+  !audio volume <0-100> - Set volume
+  !audio now            - Show currently playing
 """
 
 from __future__ import annotations
@@ -221,11 +221,11 @@ class Music(commands.Cog):
             log.info("Music queue empty or voice disconnected in guild %s", guild_id)
 
     @require_role(Role.FRIEND)
-    @commands.group(name="music", invoke_without_command=True)
-    async def music(self, ctx: commands.Context, *, query: str = None):
-        """Play music from a URL or add to queue. Usage: !music <url> or !music search <query>"""
+    @commands.group(name="audio", invoke_without_command=True)
+    async def audio(self, ctx: commands.Context, *, query: str = None):
+        """Play audio from a URL or add to queue. Usage: !audio <url> or !audio search <query>"""
         if not query:
-            await ctx.send("Usage: `!music <youtube_url>` or `!music search <query>`")
+            await ctx.send("Usage: `!audio <url>` or `!audio search <query>`")
             return
 
         guild, voice_channel, vc = await resolve_voice(ctx)
@@ -266,15 +266,14 @@ class Music(commands.Cog):
             await ctx.send(f"▶️ Now playing: **{track.title}** ({_format_duration(track.duration)})")
 
     @require_role(Role.FRIEND)
-    @music.command(name="search")
-    async def music_search(self, ctx: commands.Context, *, query: str):
+    @audio.command(name="search")
+    async def audio_search(self, ctx: commands.Context, *, query: str):
         """Search YouTube and play the first result."""
-        # Delegate to main music command
-        await self.music(ctx, query=query)
+        await self.audio(ctx, query=query)
 
     @require_role(Role.FRIEND)
-    @music.command(name="stop")
-    async def music_stop(self, ctx: commands.Context):
+    @audio.command(name="stop")
+    async def audio_stop(self, ctx: commands.Context):
         """Stop music playback and clear the queue."""
         guild = ctx.guild
         if not guild:
@@ -291,8 +290,8 @@ class Music(commands.Cog):
         await ctx.send("⏹️ Music stopped and queue cleared.")
 
     @require_role(Role.FRIEND)
-    @music.command(name="skip")
-    async def music_skip(self, ctx: commands.Context):
+    @audio.command(name="skip")
+    async def audio_skip(self, ctx: commands.Context):
         """Skip to the next track in the queue."""
         guild = ctx.guild
         if not guild:
@@ -312,8 +311,8 @@ class Music(commands.Cog):
         vc.stop()  # This triggers _on_track_end which plays next
 
     @require_role(Role.FRIEND)
-    @music.command(name="back")
-    async def music_back(self, ctx: commands.Context):
+    @audio.command(name="back")
+    async def audio_back(self, ctx: commands.Context):
         """Go back to the previously played track."""
         guild = ctx.guild
         if not guild:
@@ -340,8 +339,8 @@ class Music(commands.Cog):
             await ctx.send(f"⏮️ Queued previous: **{previous.title}**")
 
     @require_role(Role.FRIEND)
-    @music.command(name="queue")
-    async def music_queue(self, ctx: commands.Context):
+    @audio.command(name="queue")
+    async def audio_queue(self, ctx: commands.Context):
         """Show the current music queue."""
         guild = ctx.guild
         if not guild:
@@ -351,7 +350,7 @@ class Music(commands.Cog):
         queue = self._get_queue(guild.id)
 
         if not current and not queue:
-            await ctx.send("📭 Queue is empty. Use `!music <url>` to add tracks.")
+            await ctx.send("📭 Queue is empty. Use `!audio <url>` to add tracks.")
             return
 
         lines = ["🎵 **Music Queue**"]
@@ -371,8 +370,8 @@ class Music(commands.Cog):
         await ctx.send("\n".join(lines))
 
     @require_role(Role.FRIEND)
-    @music.command(name="pause")
-    async def music_pause(self, ctx: commands.Context):
+    @audio.command(name="pause")
+    async def audio_pause(self, ctx: commands.Context):
         """Pause the current playback."""
         guild = ctx.guild
         if not guild:
@@ -386,8 +385,8 @@ class Music(commands.Cog):
             await ctx.send("Nothing is playing.")
 
     @require_role(Role.FRIEND)
-    @music.command(name="resume")
-    async def music_resume(self, ctx: commands.Context):
+    @audio.command(name="resume")
+    async def audio_resume(self, ctx: commands.Context):
         """Resume paused playback."""
         guild = ctx.guild
         if not guild:
@@ -401,8 +400,8 @@ class Music(commands.Cog):
             await ctx.send("Nothing is paused.")
 
     @require_role(Role.FRIEND)
-    @music.command(name="volume")
-    async def music_volume(self, ctx: commands.Context, volume: int):
+    @audio.command(name="volume")
+    async def audio_volume(self, ctx: commands.Context, volume: int):
         """Set the music volume (0-100)."""
         if volume < 0 or volume > 100:
             await ctx.send("Volume must be between 0 and 100.")
@@ -424,8 +423,8 @@ class Music(commands.Cog):
         await ctx.send(f"🔊 Volume set to {volume}%.")
 
     @require_role(Role.FRIEND)
-    @music.command(name="now")
-    async def music_now(self, ctx: commands.Context):
+    @audio.command(name="now")
+    async def audio_now(self, ctx: commands.Context):
         """Show what's currently playing."""
         guild = ctx.guild
         if not guild:

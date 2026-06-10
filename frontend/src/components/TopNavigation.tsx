@@ -374,7 +374,7 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
                         value={commandInput}
                         onChange={(e) => setCommandInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleExecuteCommand()}
-                        placeholder="e.g. play lofi radio"
+                        placeholder="e.g. audio lofi radio"
                         className="pl-8 h-8 glass-input text-slate-200 text-sm placeholder:text-slate-500 w-full"
                         disabled={!selectedGuild}
                       />
