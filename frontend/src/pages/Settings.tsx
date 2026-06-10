@@ -13,6 +13,20 @@ const NITRO_LABELS: Record<number, string> = {
   3: 'Nitro Basic',
 }
 
+const YTDLP_FORMATS: { label: string; value: string; description: string }[] = [
+  { label: 'Best video + best audio',          value: 'bestvideo+bestaudio/best',                          description: 'Highest quality — merges best video and best audio streams' },
+  { label: 'Best video + best audio (MP4)',    value: 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', description: 'Best quality in MP4 container (M4A audio)' },
+  { label: '4K max + best audio',              value: 'bestvideo[height<=2160]+bestaudio/best[height<=2160]', description: 'Up to 4K (2160p) video with best available audio' },
+  { label: '1080p max + best audio',           value: 'bestvideo[height<=1080]+bestaudio/best[height<=1080]', description: 'Video capped at 1080p with best available audio' },
+  { label: '1080p max + best audio (MP4)',     value: 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]', description: '1080p video with M4A audio in MP4 container' },
+  { label: '720p max + best audio',            value: 'bestvideo[height<=720]+bestaudio/best[height<=720]',  description: 'Video capped at 720p with best available audio' },
+  { label: '720p max + best audio (MP4)',      value: 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]', description: '720p video with M4A audio in MP4 container' },
+  { label: '480p max + best audio',            value: 'bestvideo[height<=480]+bestaudio/best[height<=480]',  description: 'Video capped at 480p with best available audio' },
+  { label: 'Audio only — best (Opus)',         value: 'bestaudio[ext=opus]/bestaudio',                      description: 'Audio only, prefer Opus codec (best for Discord)' },
+  { label: 'Audio only — best (M4A/AAC)',      value: 'bestaudio[ext=m4a]/bestaudio',                       description: 'Audio only, prefer M4A/AAC codec' },
+  { label: 'Worst video + worst audio',        value: 'worstvideo+worstaudio/worst',                         description: 'Lowest quality — minimal bandwidth usage' },
+]
+
 const NITRO_LIMITS: Record<number, { quality: string; fps: number; resolution: string; bitrate: string }> = {
   0: { quality: '720p',  fps: 30, resolution: '1280:720',  bitrate: '8000k' },
   1: { quality: '1080p', fps: 30, resolution: '1920:1080', bitrate: '8000k' },
@@ -401,14 +415,24 @@ export function Settings() {
                     </span>
                   )}
                 </label>
-                <Input
-                  value={config.ytdlp_format}
-                  onChange={(e) => setConfig({ ...config, ytdlp_format: e.target.value })}
-                  placeholder="bestvideo+bestaudio/best"
-                  className="glass-input text-slate-200"
+                <select
+                  value={YTDLP_FORMATS.some(f => f.value === config.ytdlp_format) ? config.ytdlp_format : '__custom__'}
+                  onChange={(e) => {
+                    if (e.target.value !== '__custom__') setConfig({ ...config, ytdlp_format: e.target.value })
+                  }}
+                  className="flex h-10 w-full rounded-xl glass-input px-3 py-1 text-sm text-slate-200 outline-none focus:ring-2 focus:ring-primary/50"
                   disabled={isEnvControlled('ytdlp_format')}
-                />
-                <p className="text-xs text-slate-500">Format selector for downloaded VODs</p>
+                >
+                  {YTDLP_FORMATS.map(f => (
+                    <option key={f.value} value={f.value} className="bg-slate-800">{f.label}</option>
+                  ))}
+                  {!YTDLP_FORMATS.some(f => f.value === config.ytdlp_format) && (
+                    <option value="__custom__" className="bg-slate-800">Custom: {config.ytdlp_format}</option>
+                  )}
+                </select>
+                <p className="text-xs text-slate-500">
+                  {YTDLP_FORMATS.find(f => f.value === config.ytdlp_format)?.description ?? 'Custom format selector'}
+                </p>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-400 flex items-center gap-2">
