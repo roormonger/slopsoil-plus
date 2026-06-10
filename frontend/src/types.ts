@@ -84,17 +84,6 @@ export interface BotStatus {
   premium_type?: number
 }
 
-export interface CommandStats {
-  total: number
-  by_source: Record<string, number>
-  by_category: {
-    voice: number
-    video: number
-    music: number
-    other: number
-  }
-  by_user: Array<{ user_id: string; username: string; count: number }>
-}
 
 export interface NowPlaying {
   guild_id: string

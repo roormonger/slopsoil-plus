@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Loader2, Radio, Users, Zap, Music2, Video, MessageSquare, Globe, Trophy, Settings, Activity, Signal, Tv, Bookmark, Volume2, Square } from 'lucide-react'
+import { Loader2, Radio, Users, Music2, Video, Settings, Activity, Signal, Tv, Bookmark, Volume2, Square } from 'lucide-react'
 import { Badge } from '../components/ui/badge'
 import { useApi } from '../hooks/useApi'
 import { useWebSocketContext } from '../context/WebSocketContext'
-import type { BotStatus, NowPlaying, MusicStatus, CommandStats, Config } from '../types'
+import type { BotStatus, NowPlaying, MusicStatus, Config } from '../types'
 
 export function Dashboard() {
   const api = useApi()
@@ -12,7 +12,6 @@ export function Dashboard() {
   const [nowPlaying, setNowPlaying] = useState<NowPlaying[]>([])
   const [stoppingGuild, setStoppingGuild] = useState<string | null>(null)
   const [musicStatus, setMusicStatus] = useState<MusicStatus | null>(null)
-  const [commandStats, setCommandStats] = useState<CommandStats | null>(null)
   const [config, setConfig] = useState<Config | null>(null)
   const [iptvSources, setIptvSources] = useState<Array<{ name: string; url: string; enabled: boolean }>>([])
   const [bookmarks, setBookmarks] = useState<Array<{ id: number; name: string; url: string }>>([])
@@ -22,11 +21,10 @@ export function Dashboard() {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
-      const [statusData, nowPlayingData, musicStatusData, cmdStatsData, configData, iptvData, bmData] = await Promise.all([
+      const [statusData, nowPlayingData, musicStatusData, configData, iptvData, bmData] = await Promise.all([
         api.fetchStatus(),
         api.fetchNowPlaying(),
         api.fetchMusicStatus(),
-        api.fetchCommandStats(),
         api.fetchConfig(),
         api.fetchIptvSources(),
         api.fetchBookmarks(),
@@ -34,7 +32,6 @@ export function Dashboard() {
       if (statusData) setStatus(statusData)
       if (nowPlayingData) setNowPlaying(nowPlayingData)
       if (musicStatusData) setMusicStatus(musicStatusData)
-      if (cmdStatsData) setCommandStats(cmdStatsData)
       if (configData) setConfig(configData.settings)
       if (iptvData) setIptvSources(iptvData)
       if (bmData) setBookmarks(bmData)
@@ -57,9 +54,6 @@ export function Dashboard() {
     if (wsMusicStatus) setMusicStatus(wsMusicStatus)
   }, [wsMusicStatus])
 
-  const chatCommands = commandStats?.by_source?.discord || 0
-  const webCommands = commandStats?.by_source?.web || 0
-  const topUser = commandStats?.by_user?.[0]
   const streamQuality = config ? `${config.stream_quality} @ ${config.stream_fps}fps` : '-'
 
   if (loading) {
@@ -136,44 +130,6 @@ export function Dashboard() {
               <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Active Streams</span>
             </div>
             <div className="text-lg font-semibold text-slate-200">{status?.streaming_count || 0}</div>
-          </div>
-
-          {/* Total Commands */}
-          <div className="bg-slate-900/40 p-4 hover:bg-slate-800/40 transition-colors">
-            <div className="flex items-center gap-2 mb-2">
-              <Zap className="w-3.5 h-3.5 text-primary" />
-              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Total Commands</span>
-            </div>
-            <div className="text-lg font-semibold text-slate-200">{commandStats?.total || 0}</div>
-          </div>
-
-          {/* Chat Commands */}
-          <div className="bg-slate-900/40 p-4 hover:bg-slate-800/40 transition-colors">
-            <div className="flex items-center gap-2 mb-2">
-              <MessageSquare className="w-3.5 h-3.5 text-primary" />
-              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Chat Commands</span>
-            </div>
-            <div className="text-lg font-semibold text-slate-200">{chatCommands}</div>
-          </div>
-
-          {/* Web UI Commands */}
-          <div className="bg-slate-900/40 p-4 hover:bg-slate-800/40 transition-colors">
-            <div className="flex items-center gap-2 mb-2">
-              <Globe className="w-3.5 h-3.5 text-primary" />
-              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Web UI Commands</span>
-            </div>
-            <div className="text-lg font-semibold text-slate-200">{webCommands}</div>
-          </div>
-
-          {/* Top User */}
-          <div className="bg-slate-900/40 p-4 hover:bg-slate-800/40 transition-colors col-span-2 md:col-span-1">
-            <div className="flex items-center gap-2 mb-2">
-              <Trophy className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Top User</span>
-            </div>
-            <div className="text-lg font-semibold text-slate-200 truncate" title={topUser?.username || '-'}>
-              {topUser ? `${topUser.username} (${topUser.count})` : '-'}
-            </div>
           </div>
 
           {/* Stream Quality */}

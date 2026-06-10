@@ -779,76 +779,23 @@ async def execute_bot_command(
         else:
             await callback(ctx.cog, ctx)
 
-        # Determine cog/category for logging
         cog_name = callback.__self__.__class__.__name__ if hasattr(callback, "__self__") else None
-        is_voice = cog_name in ("Voice",)
-        is_video = cog_name in ("TV", "IPTV", "Jellyfin", "VideoPlayer")
-        is_music = cog_name in ("Music",)
-
-        # Log web command if source user provided
-        if source_user:
-            try:
-                from backend.database import log_command as db_log_command
-                db_log_command(
-                    source="web",
-                    command=command,
-                    args=args.split() if args else None,
-                    user_id=source_user.get("user_id"),
-                    username=source_user.get("username"),
-                    guild_id=guild_id,
-                    guild_name=source_user.get("guild_name"),
-                    channel_id=source_user.get("channel_id"),
-                    channel_name=source_user.get("channel_name"),
-                    cog_name=cog_name,
-                    is_voice=is_voice,
-                    is_video=is_video,
-                    is_music=is_music,
-                    success=True,
-                )
-            except Exception:
-                pass
-
-        # Return captured messages or success
         if messages:
             return {
                 "success": True,
                 "message": " | ".join(messages),
                 "command": command,
                 "cog_name": cog_name,
-                "is_voice": is_voice,
-                "is_video": is_video,
-                "is_music": is_music,
             }
         return {
             "success": True,
             "message": "Command executed",
             "command": command,
             "cog_name": cog_name,
-            "is_voice": is_voice,
-            "is_video": is_video,
-            "is_music": is_music,
         }
 
     except Exception as e:
         log.error("Command execution failed: %s", e)
-        if source_user:
-            try:
-                from backend.database import log_command as db_log_command
-                db_log_command(
-                    source="web",
-                    command=command,
-                    args=args.split() if args else None,
-                    user_id=source_user.get("user_id"),
-                    username=source_user.get("username"),
-                    guild_id=guild_id,
-                    guild_name=source_user.get("guild_name"),
-                    channel_id=source_user.get("channel_id"),
-                    channel_name=source_user.get("channel_name"),
-                    success=False,
-                    error_message=str(e),
-                )
-            except Exception:
-                pass
         return {"success": False, "message": f"Error: {str(e)}"}
 
 
