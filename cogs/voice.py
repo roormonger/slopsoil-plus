@@ -35,6 +35,24 @@ class Voice(commands.Cog):
             await ctx.send("you're not in a voice channel")
             return
 
+        # Check if bot is active in a different guild
+        for other_guild in ctx.bot.guilds:
+            if other_guild.id == guild.id:
+                continue
+            other_vc = other_guild.voice_client
+            if other_vc and other_vc.is_connected():
+                log.info(
+                    "join blocked: already active in guild '%s', requested by '%s' in guild '%s'",
+                    other_guild,
+                    ctx.author,
+                    guild,
+                )
+                await ctx.send(
+                    f"❌ I'm currently active in **{other_guild.name}**. "
+                    f"Ask them to use `!leave` first."
+                )
+                return
+
         if vc:
             log.info("moving to voice channel '%s' in guild '%s'", voice_channel, guild)
             await vc.move_to(voice_channel)

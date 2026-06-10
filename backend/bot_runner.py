@@ -569,6 +569,18 @@ async def join_voice_channel(guild_id: str, channel_id: str) -> dict[str, Any]:
         if vc and vc.channel and vc.channel.id == channel.id:
             return {"success": True, "message": f"Already in {channel.name}"}
 
+        # Check if bot is active in a different guild
+        for other_guild in _bot_instance.guilds:
+            if other_guild.id == guild.id:
+                continue
+            other_vc = other_guild.voice_client
+            if other_vc and other_vc.is_connected():
+                return {
+                    "success": False,
+                    "message": f"Bot is currently active in {other_guild.name}. Ask them to use !leave first.",
+                    "busy_guild": other_guild.name,
+                }
+
         # Move or connect
         if vc:
             await vc.move_to(channel)

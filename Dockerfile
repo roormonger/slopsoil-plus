@@ -18,13 +18,21 @@ FROM fedora:44
 # `ffmpeg` package: it ships a different FFmpeg version with libx264, and
 # libx264's output currently causes Discord to drop the stream after one frame.
 #
-# VA-API hardware H.264 encode requires a vendor-specific userspace driver:
-#   AMD  → mesa-va-drivers-freeworld (RPM Fusion free)
-#   Intel Gen8+ (UHD Graphics) → intel-media-driver / iHD (RPM Fusion nonfree)
+# ffmpeg-free's h264_vaapi encoder is only the libva *loader* — it still needs a
+# hardware-specific VA-API driver to reach the GPU. Fedora's stock VA-API drivers
+# strip H.264/HEVC for patent reasons, so hardware H.264 encode needs the RPM
+# Fusion builds. We install one driver per supported GPU vendor:
+# * AMD -> mesa-va-drivers-freeworld (radeonsi) [RPM Fusion free]
+# * Intel Gen8+ -> intel-media-driver (iHD) [RPM Fusion nonfree]
+# * Intel pre-Gen8 -> libva-intel-driver (i965) [RPM Fusion free]
 # Without the matching driver the h264_vaapi probe fails and the bot silently
-# falls back to the libopenh264 software encoder.  libva auto-selects the right
-# driver from the /dev/dri PCI ID, so we install both and do NOT hardcode
-# LIBVA_DRIVER_NAME (that would break whichever vendor isn't the forced one).
+# falls back to the libopenh264 software encoder. (NVIDIA uses h264_nvenc, not
+# VA-API; that encoder is already compiled into ffmpeg-free and loads the host's
+# libnvidia-encode at runtime via the NVIDIA container toolkit — no image package
+# needed.) Fedora's libva searches /usr/lib64/dri, dri-freeworld and dri-nonfree
+# by default and auto-selects the right driver from the /dev/dri device's PCI ID,
+# so installing every driver side by side is enough; we deliberately do NOT
+# hardcode LIBVA_DRIVER_NAME, which would force one vendor and break the others.
 RUN dnf install -y \
         ffmpeg-free \
         libva-utils \
@@ -32,7 +40,10 @@ RUN dnf install -y \
         python3-pip \
         https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-44.noarch.rpm \
         https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-44.noarch.rpm \
-    && dnf install -y --allowerasing mesa-va-drivers-freeworld intel-media-driver \
+    && dnf install -y --allowerasing \
+        mesa-va-drivers-freeworld \
+        intel-media-driver \
+        libva-intel-driver \
     && dnf clean all \
     && rm -rf /var/cache/dnf
 
