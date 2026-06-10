@@ -295,11 +295,11 @@ export function Jellyfin() {
           </div>
         ) : (
           <>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center gap-2">
               <Button variant="ghost" size="sm" onClick={scrollLibsLeft} className="shrink-0 h-8 w-8 p-0 text-slate-400 hover:text-white hover:bg-white/10">
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <div ref={libScrollRef} className="flex gap-2 overflow-x-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              <div ref={libScrollRef} className="flex gap-2 overflow-x-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', maxWidth: 'calc(100% - 4rem)' }}>
                 {libraries.map((library) => (
                   <button
                     key={library.Id}
@@ -323,7 +323,7 @@ export function Jellyfin() {
               <div className="flex gap-3">
                 <div className="relative flex-1 min-w-0">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                  <Input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search media..." className="pl-10 glass-input text-slate-200" />
+                  <Input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search media..." className="pl-10 h-10 glass-input text-slate-200" />
                 </div>
                 <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="h-10 px-3 rounded-xl glass-input text-sm text-slate-200 outline-none focus:ring-2 focus:ring-primary/50 shrink-0">
                   <option value="Name">Name</option>
@@ -333,8 +333,8 @@ export function Jellyfin() {
                   <option value="RunTimeTicks">Runtime</option>
                 </select>
                 <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'Ascending' | 'Descending')} className="h-10 px-3 rounded-xl glass-input text-sm text-slate-200 outline-none focus:ring-2 focus:ring-primary/50 shrink-0">
-                  <option value="Ascending">A-Z</option>
-                  <option value="Descending">Z-A</option>
+                  <option value="Ascending">Asc</option>
+                  <option value="Descending">Desc</option>
                 </select>
               </div>
             )}
@@ -462,7 +462,7 @@ export function Jellyfin() {
 
           {/* Paginator — only shown on list views (not inside a TV series) */}
           {!tvDrill.series && items.length > 0 && totalPages > 1 && (
-            <div className="flex items-center justify-center gap-1 p-4 pt-2 shrink-0 flex-wrap">
+            <div className="flex items-center justify-center gap-1 p-4 pt-2 shrink-0 flex-wrap w-full">
               {/* First */}
               <Button size="sm" variant="outline" onClick={() => setCurrentPage(1)} disabled={currentPage === 1} className="glass-light border-white/10 text-slate-300 hover:bg-white/10 disabled:opacity-50 h-8 w-8 p-0" title="First page">
                 <ChevronsLeft className="w-4 h-4" />
@@ -472,14 +472,14 @@ export function Jellyfin() {
                 <ChevronLeft className="w-4 h-4" />
               </Button>
 
-              {/* Page numbers — show all if ≤20 pages, else ±8 sliding window */}
+              {/* Page numbers — show all if ≤30 pages, else ±15 sliding window */}
               {(() => {
                 let start: number, end: number
-                if (totalPages <= 20) {
+                if (totalPages <= 30) {
                   start = 1
                   end = totalPages
                 } else {
-                  const half = 8
+                  const half = 15
                   start = Math.max(1, currentPage - half)
                   end = Math.min(totalPages, currentPage + half)
                 }
