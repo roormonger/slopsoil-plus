@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { RefreshCw, Phone, PhoneOff, Terminal, ArrowRightLeft } from 'lucide-react'
+import { RefreshCw, Phone, PhoneOff, ArrowRightLeft, ChevronDown, Music, Tv, Terminal } from 'lucide-react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Dropdown } from './ui/dropdown'
@@ -13,6 +13,81 @@ interface TopNavigationProps {
   onNavigate?: (page: string) => void
 }
 
+function NowPlayingBar() {
+  const { nowPlaying, musicStatus } = useWebSocketContext()
+  const [elapsed, setElapsed] = useState(0)
+
+  const videoStream = nowPlaying[0] ?? null
+  const musicTrack = musicStatus?.is_playing || musicStatus?.is_paused ? musicStatus.current : null
+
+  const activeTitle = videoStream?.title ?? musicTrack?.title ?? null
+  const isMusic = !videoStream && !!musicTrack
+  const startedAt = videoStream?.started_at ?? null
+  const duration = musicTrack?.duration ?? 0
+
+  useEffect(() => {
+    if (!startedAt && !isMusic) {
+      setElapsed(0)
+      return
+    }
+    const tick = () => {
+      if (startedAt) {
+        setElapsed(Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
+      } else if (isMusic) {
+        setElapsed(prev => prev + 1)
+      }
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [startedAt, isMusic])
+
+  useEffect(() => {
+    if (isMusic) setElapsed(0)
+  }, [musicTrack?.url])
+
+  if (!activeTitle) return null
+
+  const fmt = (s: number) => {
+    const m = Math.floor(s / 60)
+    const sec = s % 60
+    return `${m}:${sec.toString().padStart(2, '0')}`
+  }
+
+  const progress = duration > 0 ? Math.min((elapsed / duration) * 100, 100) : null
+
+  return (
+    <div className="flex items-center gap-3 max-w-sm">
+      <div className={`p-1.5 rounded-lg shrink-0 ${isMusic ? 'bg-violet-500/20 text-violet-400' : 'bg-blue-500/20 text-blue-400'}`}>
+        {isMusic ? <Music className="w-3.5 h-3.5" /> : <Tv className="w-3.5 h-3.5" />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-medium text-slate-200 truncate leading-tight">{activeTitle}</p>
+        <div className="flex items-center gap-2 mt-0.5">
+          {progress !== null ? (
+            <>
+              <div className="flex-1 h-0.5 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-1000 ${isMusic ? 'bg-violet-400' : 'bg-blue-400'}`}
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <span className="text-[10px] text-slate-500 shrink-0">{fmt(elapsed)} / {fmt(duration)}</span>
+            </>
+          ) : (
+            <>
+              <div className="flex-1 h-0.5 bg-slate-700 rounded-full overflow-hidden">
+                <div className="h-full w-full bg-blue-400/40 animate-pulse rounded-full" />
+              </div>
+              <span className="text-[10px] text-slate-500 shrink-0">{fmt(elapsed)}</span>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function TopNavigation({ onNavigate }: TopNavigationProps) {
   const api = useApi()
   const { user } = useAuth()
@@ -23,6 +98,8 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
   const [initialBotStatus, setInitialBotStatus] = useState<BotStatus | null>(null)
   const [httpGuilds, setHttpGuilds] = useState<Guild[]>([])
   const [httpVoiceChannels, setHttpVoiceChannels] = useState<VoiceChannel[]>([])
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   // One-time HTTP fetch for guilds (fallback while WS connects)
   useEffect(() => {
@@ -54,6 +131,17 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
     }
     loadStatus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   const botStatus = wsBotStatus || initialBotStatus
@@ -139,21 +227,17 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
 
     try {
       if (voiceState?.connected) {
-        // Check if we need to switch or leave
         const currentGuildId = voiceState.guild_id
         const currentChannelId = voiceState.channel_id
         if (!currentGuildId) return
 
         if (currentGuildId !== selectedGuild || currentChannelId !== selectedVoiceChannel) {
-          // Switch to new server/channel
           await api.leaveVoiceChannel(currentGuildId)
           await api.joinVoiceChannel(selectedGuild, selectedVoiceChannel)
         } else {
-          // Leave current channel
           await api.leaveVoiceChannel(selectedGuild)
         }
       } else {
-        // Join new channel
         await api.joinVoiceChannel(selectedGuild, selectedVoiceChannel)
       }
     } catch (error) {
@@ -167,43 +251,15 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
     return 'leave'
   }
 
-  const getVoiceButtonText = () => {
-    const state = getVoiceButtonState()
-    switch (state) {
-      case 'join': return 'Join Voice'
-      case 'leave': return 'Leave Voice'
-      case 'switch': return 'Switch'
-      default: return 'Join Voice'
-    }
-  }
-
-  const getVoiceButtonIcon = () => {
-    const state = getVoiceButtonState()
-    switch (state) {
-      case 'join': return Phone
-      case 'leave': return PhoneOff
-      case 'switch': return ArrowRightLeft
-      default: return Phone
-    }
-  }
-
-  const getVoiceButtonClass = () => {
-    const state = getVoiceButtonState()
-    switch (state) {
-      case 'join':
-        return 'bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30'
-      case 'leave':
-        return 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
-      case 'switch':
-        return 'bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30'
-      default:
-        return 'bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30'
-    }
-  }
+  const voiceBtnState = getVoiceButtonState()
+  const voiceBtnConfig = {
+    join:   { label: 'Join',   Icon: Phone,          cls: 'bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/30' },
+    leave:  { label: 'Leave',  Icon: PhoneOff,        cls: 'bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30' },
+    switch: { label: 'Switch', Icon: ArrowRightLeft,  cls: 'bg-amber-500/20 text-amber-400 border-amber-500/30 hover:bg-amber-500/30' },
+  }[voiceBtnState]
 
   const handleExecuteCommand = async () => {
     if (!selectedGuild || !commandInput.trim()) return
-
     try {
       const [command, ...args] = commandInput.trim().split(' ')
       await api.executeCommand(selectedGuild, command, args.join(' '), selectedVoiceChannel)
@@ -213,124 +269,135 @@ export default function TopNavigation({ onNavigate }: TopNavigationProps) {
     }
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleExecuteCommand()
-    }
-  }
+  const currentGuildName = effectiveGuilds.find(g => g.id === selectedGuild)?.name
+  const currentChannelName = voiceChannels.find(c => c.id === selectedVoiceChannel)?.name
 
   return (
-    <div className="fixed top-0 left-0 right-0 h-20 bg-slate-900/95 backdrop-blur-sm border-b border-white/10 z-50">
-      <div className="h-full px-4 flex items-center justify-between">
-        {/* Left side - Logo and Title */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => onNavigate?.('dashboard')}
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-          >
-            <img
-              src="/logo.png"
-              alt="SlopSoil"
-              className="w-8 h-8 rounded-lg"
-            />
-            <h1 className="text-xl font-bold gradient-text">SlopSoil+</h1>
-          </button>
+    <div className="fixed top-0 left-0 right-0 h-16 bg-slate-900/95 backdrop-blur-sm border-b border-white/10 z-50">
+      <div className="h-full px-4 flex items-center justify-between gap-4">
+
+        {/* Left — Logo */}
+        <button
+          onClick={() => onNavigate?.('dashboard')}
+          className="flex items-center gap-2 hover:opacity-80 transition-opacity shrink-0"
+        >
+          <img src="/logo.png" alt="SlopSoil" className="w-7 h-7 rounded-lg" />
+          <h1 className="text-lg font-bold gradient-text">SlopSoil+</h1>
+        </button>
+
+        {/* Center — Now Playing */}
+        <div className="flex-1 flex justify-center">
+          <NowPlayingBar />
         </div>
 
-        {/* Center - Bot Controls */}
-        <div className="flex items-center gap-3">
-          {/* Bot Status */}
-          {botStatus && (
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <img
-                  src={
-                    botStatus?.bot?.avatar_url || '/discord-avatar.png'
-                  }
-                  onError={(e) => {
-                    e.currentTarget.src = '/discord-avatar.png'
-                  }}
-                  alt="Bot Avatar"
-                  className="w-10 h-10 rounded-full ring-2 ring-primary/30 shadow-lg"
+        {/* Right — Bot account widget */}
+        <div className="relative shrink-0" ref={dropdownRef}>
+          <button
+            onClick={() => setDropdownOpen(v => !v)}
+            className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl glass-light border border-white/10 hover:bg-white/10 transition-all"
+          >
+            {/* Avatar + status dot */}
+            <div className="relative">
+              <img
+                src={botStatus?.bot?.avatar_url || '/discord-avatar.png'}
+                onError={(e) => { e.currentTarget.src = '/discord-avatar.png' }}
+                alt="Bot"
+                className="w-8 h-8 rounded-full ring-1 ring-primary/30"
+              />
+              <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-900 ${
+                botStatus?.running ? 'bg-emerald-400' : 'bg-red-400'
+              }`} />
+            </div>
+
+            {/* Name + voice context */}
+            <div className="text-left leading-tight hidden sm:block">
+              <p className="text-sm font-semibold text-slate-200">{botStatus?.bot?.name ?? 'Bot'}</p>
+              <p className="text-[11px] text-slate-400 truncate max-w-[140px]">
+                {voiceState?.connected
+                  ? `${voiceState.guild_name ?? currentGuildName} · ${voiceState.channel_name ?? currentChannelName}`
+                  : (currentGuildName ?? 'No server selected')}
+              </p>
+            </div>
+
+            <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* Dropdown panel */}
+          {dropdownOpen && (
+            <div className="absolute right-0 top-full mt-2 w-72 glass-card border border-white/10 rounded-2xl shadow-2xl p-4 space-y-3 z-50">
+
+              {/* Server selector */}
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Server</p>
+                <Dropdown
+                  options={effectiveGuilds.map(g => ({ value: g.id, label: g.name }))}
+                  value={selectedGuild}
+                  onChange={setSelectedGuild}
+                  placeholder="Select Server"
+                  className="w-full"
                 />
-                <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-slate-800 ${
-                  botStatus.running ? 'bg-emerald-400' : 'bg-red-400'
-                }`} />
               </div>
-              <div>
-                <div className="font-semibold text-slate-200 text-base">{botStatus?.bot?.name || 'Bot Name'}</div>
-                <div className="text-xs text-slate-400 truncate max-w-32">
-                  {botStatus?.status || 'Idle'}
-                </div>
+
+              {/* Voice channel selector */}
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Voice Channel</p>
+                <Dropdown
+                  options={voiceChannels.map(c => ({ value: c.id, label: c.name }))}
+                  value={selectedVoiceChannel}
+                  onChange={setSelectedVoiceChannel}
+                  placeholder="Select Channel"
+                  disabled={!selectedGuild}
+                  className="w-full"
+                />
               </div>
+
+              {/* Join / Leave / Switch */}
+              <Button
+                size="sm"
+                onClick={handleJoinLeaveVoice}
+                disabled={!selectedGuild || !selectedVoiceChannel}
+                className={`w-full h-8 border ${voiceBtnConfig.cls} disabled:opacity-50`}
+              >
+                <voiceBtnConfig.Icon className="w-3.5 h-3.5 mr-1.5" />
+                {voiceBtnConfig.label} Voice
+              </Button>
+
+              {/* Admin-only section */}
+              {user?.role === 'admin' && (
+                <>
+                  <div className="border-t border-white/5 pt-3 space-y-2">
+                    {/* Execute command */}
+                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Execute Command</p>
+                    <div className="relative">
+                      <Terminal className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+                      <Input
+                        value={commandInput}
+                        onChange={(e) => setCommandInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleExecuteCommand()}
+                        placeholder="e.g. play lofi radio"
+                        className="pl-8 h-8 glass-input text-slate-200 text-sm placeholder:text-slate-500 w-full"
+                        disabled={!selectedGuild}
+                      />
+                    </div>
+
+                    {/* Reload bot */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleReloadBot}
+                      disabled={isLoading}
+                      className="w-full h-8 glass-light border-white/10 text-slate-300 hover:bg-white/10 disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3 h-3 mr-1.5 ${isLoading ? 'animate-spin' : ''}`} />
+                      Reload Bot
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
           )}
-
-          {/* Server Dropdown */}
-          <Dropdown
-            options={effectiveGuilds.map(guild => ({ value: guild.id, label: guild.name }))}
-            value={selectedGuild}
-            onChange={setSelectedGuild}
-            placeholder="Select Server"
-            className="w-48"
-          />
-
-          {/* Voice Channel Dropdown */}
-          <Dropdown
-            options={voiceChannels.map(channel => ({ value: channel.id, label: channel.name }))}
-            value={selectedVoiceChannel}
-            onChange={setSelectedVoiceChannel}
-            placeholder="Select Voice Channel"
-            disabled={!selectedGuild}
-            className="w-48"
-          />
-
-          {/* Join/Leave/Switch Voice Button */}
-          <Button
-            size="sm"
-            onClick={handleJoinLeaveVoice}
-            disabled={!selectedGuild || !selectedVoiceChannel}
-            className={`h-8 px-3 ${getVoiceButtonClass()} disabled:opacity-50`}
-          >
-            {(() => {
-              const Icon = getVoiceButtonIcon()
-              return (
-                <>
-                  <Icon className="w-3 h-3 mr-1" />
-                  {getVoiceButtonText()}
-                </>
-              )
-            })()}
-          </Button>
-
-          {/* Reload Bot Button - admin only */}
-          {user?.role === 'admin' && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleReloadBot}
-              disabled={isLoading}
-              className="h-8 glass-light border-white/10 text-slate-300 hover:bg-white/10 disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
-            </Button>
-          )}
         </div>
 
-        {/* Right side - Command Input */}
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Terminal className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-            <Input
-              value={commandInput}
-              onChange={(e) => setCommandInput(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Execute command..."
-              className="pl-10 pr-4 h-8 w-64 glass-input text-slate-200 text-sm placeholder:text-slate-500"
-              disabled={!selectedGuild}
-            />
-          </div>
-        </div>
       </div>
     </div>
   )

@@ -724,7 +724,18 @@ async def execute_bot_command(
         async def send(self, content=None, **kwargs):
             if content:
                 self._messages.append(str(content))
-            return None
+            _msgs = self._messages
+
+            class _StubMessage:
+                async def edit(self, content=None, **kw):
+                    if content and _msgs is not None:
+                        # Replace last status message with updated one
+                        if _msgs:
+                            _msgs[-1] = str(content)
+                        else:
+                            _msgs.append(str(content))
+
+            return _StubMessage()
 
         async def invoke(self, command, *args, **kwargs):
             # Override to use our mock

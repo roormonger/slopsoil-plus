@@ -31,7 +31,7 @@ export function Bookmarks() {
     init()
   }, [])
 
-  const handlePlay = async (name: string) => {
+  const handlePlay = async (url: string) => {
     if (!selectedGuild) {
       api.showMessage('Please select a guild from the top navigation first', 'error')
       return
@@ -40,7 +40,7 @@ export function Bookmarks() {
       api.showMessage('Please select a voice channel from the top navigation first', 'error')
       return
     }
-    await api.executeCommand(selectedGuild, 'play', name, selectedVoiceChannel)
+    await api.executeCommand(selectedGuild, 'play', url, selectedVoiceChannel)
   }
 
   const handleDelete = async (id: number) => {
@@ -132,7 +132,7 @@ export function Bookmarks() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handlePlay(bm.name)}
+                    onClick={() => handlePlay(bm.url)}
                     disabled={!selectedGuild || !selectedVoiceChannel}
                     className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
                     title={

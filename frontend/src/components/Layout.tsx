@@ -31,7 +31,7 @@ export function Layout({ children }: LayoutProps) {
   return (
     <div className="min-h-screen flex">
       {/* Sidebar with glass effect */}
-      <aside className="w-64 glass-nav flex flex-col sticky top-20 h-[calc(100vh-5rem)] z-40">
+      <aside className="w-64 glass-nav flex flex-col sticky top-16 h-[calc(100vh-4rem)] z-40">
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 px-4 mt-2">Main</div>
           <SidebarItem to="/" icon={LayoutDashboard} label="Dashboard" />
@@ -85,7 +85,7 @@ export function Layout({ children }: LayoutProps) {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 mt-20 p-6 lg:p-8 overflow-auto">
+      <main className="flex-1 mt-16 p-6 lg:p-8 overflow-auto">
         <div className="max-w-5xl mx-auto space-y-6 animate-fade-in">
           {children}
         </div>
