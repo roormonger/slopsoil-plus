@@ -65,6 +65,7 @@ async def get_config() -> ConfigResponse:
     return ConfigResponse(settings=settings, users=users)
 
 
+@router.post("", response_model=ConfigUpdateResponse)
 @router.post("/", response_model=ConfigUpdateResponse)
 async def update_config(request: ConfigUpdateRequest) -> ConfigUpdateResponse:
     """Update configuration settings."""

@@ -38,6 +38,7 @@ class BotStatusResponse(BaseModel):
     voice_channels: int = 0
     latency: float = 0
     bot: BotInfo | None = None
+    premium_type: int = 0
 
 
 class ReloadResponse(BaseModel):

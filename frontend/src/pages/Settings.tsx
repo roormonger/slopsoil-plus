@@ -1,9 +1,24 @@
 import { useState, useEffect } from 'react'
-import { Loader2, Eye, EyeOff, Lock } from 'lucide-react'
+import { Loader2, Eye, EyeOff, Lock, Zap } from 'lucide-react'
+import type { BotStatus } from '../types'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useApi } from '../hooks/useApi'
 import { timezones, type Config } from '../types'
+
+const NITRO_LABELS: Record<number, string> = {
+  0: 'No Nitro',
+  1: 'Nitro Classic',
+  2: 'Nitro',
+  3: 'Nitro Basic',
+}
+
+const NITRO_LIMITS: Record<number, { quality: string; fps: number; resolution: string; bitrate: string }> = {
+  0: { quality: '720p',  fps: 30, resolution: '1280:720',  bitrate: '8000k' },
+  1: { quality: '1080p', fps: 30, resolution: '1920:1080', bitrate: '8000k' },
+  2: { quality: '1080p', fps: 60, resolution: '1920:1080', bitrate: '100000k' },
+  3: { quality: '1080p', fps: 30, resolution: '1920:1080', bitrate: '8000k' },
+}
 
 export function Settings() {
   const api = useApi()
@@ -32,6 +47,7 @@ export function Settings() {
   const [showJfKey, setShowJfKey] = useState(false)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [botStatus, setBotStatus] = useState<BotStatus | null>(null)
 
   const isEnvControlled = (key: keyof Config): boolean => {
     const result = settingsEnv[key as string]?.from_env ?? false
@@ -43,7 +59,8 @@ export function Settings() {
 
   useEffect(() => {
     const loadData = async () => {
-      const data = await api.fetchConfig()
+      const [data, status] = await Promise.all([api.fetchConfig(), api.fetchStatus()])
+      if (status) setBotStatus(status)
       console.log('API response data:', data)
       if (data) {
         setConfig(data.settings)
@@ -334,9 +351,43 @@ export function Settings() {
 
         {/* Stream Quality Settings */}
         <div className="glass-card rounded-2xl p-6 space-y-6 md:col-span-2">
-          <div>
-            <h3 className="text-xl font-semibold text-slate-200 mb-1">Stream Quality</h3>
-            <p className="text-sm text-slate-400">Configure video streaming output settings</p>
+          <div className="flex items-start justify-between">
+            <div>
+              <h3 className="text-xl font-semibold text-slate-200 mb-1">Stream Quality</h3>
+              <p className="text-sm text-slate-400">Configure video streaming output settings</p>
+            </div>
+            <div className="flex items-center gap-3">
+              {botStatus !== null && (
+                <span className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${
+                  (botStatus.premium_type ?? 0) >= 2
+                    ? 'bg-violet-500/20 text-violet-300 border-violet-500/30'
+                    : (botStatus.premium_type ?? 0) >= 1
+                    ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                    : 'bg-slate-700/50 text-slate-400 border-slate-600/30'
+                }`}>
+                  <Zap className="h-3 w-3" />
+                  {NITRO_LABELS[botStatus.premium_type ?? 0]}
+                </span>
+              )}
+              {botStatus !== null && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const limits = NITRO_LIMITS[botStatus.premium_type ?? 0]
+                    setConfig(prev => ({
+                      ...prev,
+                      stream_quality: limits.quality,
+                      stream_fps: limits.fps,
+                      stream_resolution: limits.resolution,
+                      stream_video_bitrate: limits.bitrate,
+                    }))
+                  }}
+                  className="text-xs text-primary hover:text-primary/80 underline underline-offset-2"
+                >
+                  Apply recommended
+                </button>
+              )}
+            </div>
           </div>
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">

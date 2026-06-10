@@ -198,6 +198,16 @@ async def _run_bot(token: str, stored_avatar_url: str = "") -> None:
                 log.info("Updated Discord bot avatar URL")
             else:
                 log.info("DEBUG: Avatar URL unchanged, no update needed")
+
+            # Fetch premium_type (Nitro tier) via REST — read-only GET, very safe
+            try:
+                from backend.services.discord import fetch_discord_user_info
+                info = await fetch_discord_user_info(token)
+                if info is not None:
+                    set_setting("discord_premium_type", str(info.get("premium_type", 0)))
+                    log.info("Stored discord_premium_type=%s", info.get("premium_type", 0))
+            except Exception as e:
+                log.warning("Could not fetch premium_type: %s", e)
         else:
             log.warning("DEBUG: Bot user is None after start")
 
@@ -327,6 +337,8 @@ def get_bot_status() -> dict[str, Any]:
 
     uptime = _get_uptime_seconds() if running else 0
     latency = round(_bot_instance.latency * 1000, 1) if _bot_instance and hasattr(_bot_instance, 'latency') else 0
+    settings = get_all_settings()
+    premium_type = int(settings.get("discord_premium_type", 0) or 0)
     return {
         "status": status,
         "running": running,
@@ -337,6 +349,7 @@ def get_bot_status() -> dict[str, Any]:
         "uptime": uptime,
         "latency": latency,
         "bot": bot_info,
+        "premium_type": premium_type,
     }
 
 

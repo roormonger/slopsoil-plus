@@ -81,6 +81,7 @@ export interface BotStatus {
   uptime: number
   latency?: number
   bot: BotInfo | null
+  premium_type?: number
 }
 
 export interface CommandStats {
