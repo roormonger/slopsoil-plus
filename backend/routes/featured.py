@@ -28,14 +28,20 @@ CATEGORY_SETTING_KEYS = {
 }
 
 
+class FeaturedItem(BaseModel):
+    item_id: str
+    metadata: dict | None = None
+
+
 class FeaturedListResponse(BaseModel):
     category: str
-    items: list[str]
+    items: list[FeaturedItem]
     enabled: bool
 
 
 class ToggleFeaturedRequest(BaseModel):
     item_id: str
+    metadata: dict | None = None
 
 
 class ToggleFeaturedResponse(BaseModel):
@@ -70,7 +76,8 @@ async def list_featured(category: str) -> FeaturedListResponse:
         raise HTTPException(status_code=404, detail=f"Unknown category: {category}")
     setting_key = CATEGORY_SETTING_KEYS[category]
     enabled = get_setting(setting_key) != "0"
-    items = get_featured(category)
+    rows = get_featured(category)
+    items = [FeaturedItem(item_id=r["item_id"], metadata=r["metadata"]) for r in rows]
     return FeaturedListResponse(category=category, items=items, enabled=enabled)
 
 
@@ -84,7 +91,7 @@ async def toggle_featured_item(
     _require_admin(current_user)
     if category not in FEATURED_CATEGORIES:
         raise HTTPException(status_code=404, detail=f"Unknown category: {category}")
-    now_featured = toggle_featured(category, request.item_id)
+    now_featured = toggle_featured(category, request.item_id, request.metadata)
     return ToggleFeaturedResponse(category=category, item_id=request.item_id, featured=now_featured)
 
 

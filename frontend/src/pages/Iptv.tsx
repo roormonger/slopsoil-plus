@@ -35,7 +35,7 @@ export function Iptv() {
     const init = async () => {
       await loadSources()
       const featuredData = await api.fetchFeatured('iptv')
-      if (featuredData) setFeaturedIds(new Set(featuredData.items))
+      if (featuredData) setFeaturedIds(new Set(featuredData.items.map(i => i.item_id)))
       setLoading(false)
     }
     init()

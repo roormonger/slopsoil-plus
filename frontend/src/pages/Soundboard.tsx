@@ -49,13 +49,19 @@ export function Soundboard() {
 
   const [featuredIds, setFeaturedIds] = useState<Set<string>>(new Set())
 
-  const handleToggleFeatured = async (filename: string) => {
-    const result = await api.toggleFeatured('soundboard', filename)
+  const handleToggleFeatured = async (sound: Sound) => {
+    const metadata = {
+      name: sound.name,
+      filename: sound.filename,
+      tags: sound.tags,
+      has_cover_art: sound.has_cover_art ?? false,
+    }
+    const result = await api.toggleFeatured('soundboard', sound.filename, metadata)
     if (result !== null) {
       setFeaturedIds(prev => {
         const next = new Set(prev)
-        if (result.featured) next.add(filename)
-        else next.delete(filename)
+        if (result.featured) next.add(sound.filename)
+        else next.delete(sound.filename)
         return next
       })
     }
@@ -75,7 +81,7 @@ export function Soundboard() {
       if (config?.settings?.soundboard_user_quota) {
         setQuota(Number(config.settings.soundboard_user_quota) || 10)
       }
-      if (featuredData) setFeaturedIds(new Set(featuredData.items))
+      if (featuredData) setFeaturedIds(new Set(featuredData.items.map(i => i.item_id)))
       setLoading(false)
     }
     load()
@@ -263,7 +269,7 @@ export function Soundboard() {
             {/* Featured star (admin only, system sounds only) */}
             {isAdmin && type === 'system' && (
               <button
-                onClick={(e) => { e.stopPropagation(); handleToggleFeatured(sound.filename) }}
+                onClick={(e) => { e.stopPropagation(); handleToggleFeatured(sound) }}
                 className={`shrink-0 p-1 rounded transition-colors ${
                   featuredIds.has(sound.filename)
                     ? 'text-yellow-400 hover:text-yellow-300'

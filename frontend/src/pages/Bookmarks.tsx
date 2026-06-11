@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Loader2, Play, Trash2, Star } from 'lucide-react'
+import { Loader2, Play, Trash2, Star, Bookmark as BookmarkIcon } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useApi } from '../hooks/useApi'
@@ -31,19 +31,24 @@ export function Bookmarks() {
     const init = async () => {
       await loadBookmarks()
       const featuredData = await api.fetchFeatured('bookmark')
-      if (featuredData) setFeaturedIds(new Set(featuredData.items))
+      if (featuredData) setFeaturedIds(new Set(featuredData.items.map(i => i.item_id)))
       setLoading(false)
     }
     init()
   }, [])
 
-  const handleToggleFeatured = async (name: string) => {
-    const result = await api.toggleFeatured('bookmark', name)
+  const handleToggleFeatured = async (bm: Bookmark) => {
+    const metadata = {
+      name: bm.name,
+      url: bm.url,
+      thumbnail_url: bm.thumbnail_url ?? null,
+    }
+    const result = await api.toggleFeatured('bookmark', bm.name, metadata)
     if (result !== null) {
       setFeaturedIds(prev => {
         const next = new Set(prev)
-        if (result.featured) next.add(name)
-        else next.delete(name)
+        if (result.featured) next.add(bm.name)
+        else next.delete(bm.name)
         return next
       })
     }
@@ -141,15 +146,22 @@ export function Bookmarks() {
             <div className="p-8 text-center text-slate-400">No bookmarks configured</div>
           ) : (
             bookmarks.map((bm) => (
-              <div key={bm.id} className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors">
+              <div key={bm.id} className="flex items-center gap-3 p-4 hover:bg-white/5 transition-colors">
+                <div className="shrink-0 w-14 h-10 rounded-md overflow-hidden bg-slate-700/50 flex items-center justify-center">
+                  {bm.thumbnail_url ? (
+                    <img src={bm.thumbnail_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <BookmarkIcon className="w-4 h-4 text-slate-500" />
+                  )}
+                </div>
                 <div className="min-w-0 flex-1">
                   <p className="font-medium text-slate-200">{bm.name}</p>
                   <p className="text-sm text-slate-400 truncate">{bm.url}</p>
                 </div>
-                <div className="flex items-center gap-2 ml-4">
+                <div className="flex items-center gap-2 ml-2">
                   {isAdmin && (
                     <button
-                      onClick={() => handleToggleFeatured(bm.name)}
+                      onClick={() => handleToggleFeatured(bm)}
                       className={`p-1.5 rounded-lg transition-colors ${
                         featuredIds.has(bm.name)
                           ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10'

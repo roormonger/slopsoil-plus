@@ -4,6 +4,7 @@ Handles bookmark management for direct stream URLs.
 """
 
 import logging
+import re
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -14,12 +15,26 @@ from backend.database import get_bookmarks, add_bookmark, delete_bookmark
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/bookmarks")
 
+_YT_PATTERNS = [
+    re.compile(r'(?:youtube\.com/watch\?.*v=|youtu\.be/)([A-Za-z0-9_-]{11})'),
+    re.compile(r'youtube\.com/shorts/([A-Za-z0-9_-]{11})'),
+]
+
+
+def _extract_yt_video_id(url: str) -> str | None:
+    for pattern in _YT_PATTERNS:
+        m = pattern.search(url)
+        if m:
+            return m.group(1)
+    return None
+
 
 class BookmarkResponse(BaseModel):
     """Response model for a bookmark."""
     id: int
     name: str
     url: str
+    thumbnail_url: str | None = None
 
 
 class BookmarkAddRequest(BaseModel):
@@ -44,9 +59,13 @@ async def get_bookmarks_endpoint() -> list[BookmarkResponse]:
 @router.post("", response_model=BookmarkActionResponse)
 @router.post("/", response_model=BookmarkActionResponse)
 async def add_bookmark_endpoint(request: BookmarkAddRequest) -> BookmarkActionResponse:
-    """Add a new bookmark."""
+    """Add a new bookmark. Resolves YouTube thumbnail URL if applicable."""
     try:
-        add_bookmark(request.name, request.url)
+        thumbnail_url: str | None = None
+        vid = _extract_yt_video_id(request.url)
+        if vid:
+            thumbnail_url = f"https://img.youtube.com/vi/{vid}/mqdefault.jpg"
+        add_bookmark(request.name, request.url, thumbnail_url)
         return BookmarkActionResponse(message=f"Added bookmark '{request.name}'")
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Failed to add bookmark: {exc}")

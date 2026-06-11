@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import type { Config, User, BotStatus, NowPlaying, IptvSource, IptvChannel, Bookmark, Sound, Guild, VoiceChannel, VoiceStatus, CommandResult, MusicStatus } from '../types'
+import type { Config, User, BotStatus, NowPlaying, IptvSource, IptvChannel, Bookmark, Sound, Guild, VoiceChannel, VoiceStatus, CommandResult, MusicStatus, FeaturedItem } from '../types'
 
 const API_URL = '/api'
 
@@ -356,7 +356,7 @@ export function useApi() {
   }, [showMessage])
 
   // Featured API methods
-  const fetchFeatured = useCallback(async (category: string): Promise<{ items: string[]; enabled: boolean } | null> => {
+  const fetchFeatured = useCallback(async (category: string): Promise<{ items: FeaturedItem[]; enabled: boolean } | null> => {
     try {
       const res = await fetch(`${API_URL}/featured/${category}`)
       if (!res.ok) throw new Error('Failed to fetch featured items')
@@ -366,7 +366,7 @@ export function useApi() {
     }
   }, [])
 
-  const toggleFeatured = useCallback(async (category: string, itemId: string): Promise<{ featured: boolean } | null> => {
+  const toggleFeatured = useCallback(async (category: string, itemId: string, metadata?: Record<string, any> | null): Promise<{ featured: boolean } | null> => {
     try {
       const token = localStorage.getItem('slopsoil_token')
       const res = await fetch(`${API_URL}/featured/${category}/toggle`, {
@@ -375,7 +375,7 @@ export function useApi() {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ item_id: itemId }),
+        body: JSON.stringify({ item_id: itemId, metadata: metadata ?? null }),
       })
       if (!res.ok) throw new Error('Failed to toggle featured')
       return await res.json()

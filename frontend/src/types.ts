@@ -111,6 +111,12 @@ export interface Bookmark {
   id: number
   name: string
   url: string
+  thumbnail_url?: string | null
+}
+
+export interface FeaturedItem {
+  item_id: string
+  metadata: Record<string, any> | null
 }
 
 export interface Guild {

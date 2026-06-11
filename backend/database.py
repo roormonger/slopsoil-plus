@@ -173,10 +173,17 @@ def init_database() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE NOT NULL,
                 url TEXT NOT NULL,
+                thumbnail_url TEXT,
                 enabled INTEGER DEFAULT 1,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Migration: add thumbnail_url column if it doesn't exist
+        try:
+            cursor.execute("SELECT thumbnail_url FROM bookmarks LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE bookmarks ADD COLUMN thumbnail_url TEXT")
 
         # Featured items table
         cursor.execute("""
@@ -184,10 +191,17 @@ def init_database() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 category TEXT NOT NULL,
                 item_id TEXT NOT NULL,
+                metadata TEXT,
                 added_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(category, item_id)
             )
         """)
+
+        # Migration: add metadata column if it doesn't exist
+        try:
+            cursor.execute("SELECT metadata FROM featured_items LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE featured_items ADD COLUMN metadata TEXT")
 
         # Pre-seed default settings if they don't exist
         for key, value in DEFAULT_SETTINGS.items():
@@ -351,13 +365,13 @@ def is_config_modified() -> tuple[bool, str]:
 
 # Bookmark management functions
 
-def add_bookmark(name: str, url: str) -> None:
+def add_bookmark(name: str, url: str, thumbnail_url: str | None = None) -> None:
     """Add a new bookmark."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO bookmarks (name, url) VALUES (?, ?)",
-            (name, url),
+            "INSERT INTO bookmarks (name, url, thumbnail_url) VALUES (?, ?, ?)",
+            (name, url, thumbnail_url),
         )
 
 
@@ -365,7 +379,7 @@ def get_bookmarks() -> list[dict[str, Any]]:
     """Get all bookmarks."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, name, url FROM bookmarks ORDER BY name")
+        cursor.execute("SELECT id, name, url, thumbnail_url FROM bookmarks ORDER BY name")
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
@@ -545,15 +559,24 @@ def update_user_bookmarks(user_id: str, bookmarks_type: str, bookmarks: list) ->
 FEATURED_CATEGORIES = {"iptv", "bookmark", "jellyfin", "soundboard"}
 
 
-def get_featured(category: str) -> list[str]:
-    """Return all featured item_ids for a category."""
+def get_featured(category: str) -> list[dict[str, Any]]:
+    """Return all featured items for a category with stored metadata."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT item_id FROM featured_items WHERE category = ? ORDER BY added_at",
+            "SELECT item_id, metadata FROM featured_items WHERE category = ? ORDER BY added_at",
             (category,),
         )
-        return [row["item_id"] for row in cursor.fetchall()]
+        result = []
+        for row in cursor.fetchall():
+            meta = None
+            if row["metadata"]:
+                try:
+                    meta = json.loads(row["metadata"])
+                except (json.JSONDecodeError, TypeError):
+                    meta = None
+            result.append({"item_id": row["item_id"], "metadata": meta})
+        return result
 
 
 def is_featured(category: str, item_id: str) -> bool:
@@ -567,15 +590,20 @@ def is_featured(category: str, item_id: str) -> bool:
         return cursor.fetchone() is not None
 
 
-def set_featured(category: str, item_id: str) -> None:
-    """Mark an item as featured (idempotent)."""
+def set_featured(category: str, item_id: str, metadata: dict | None = None) -> None:
+    """Mark an item as featured (idempotent). Stores optional metadata JSON."""
     if category not in FEATURED_CATEGORIES:
         raise ValueError(f"Unknown category: {category}")
+    meta_json = json.dumps(metadata) if metadata is not None else None
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT OR IGNORE INTO featured_items (category, item_id) VALUES (?, ?)",
-            (category, item_id),
+            """
+            INSERT INTO featured_items (category, item_id, metadata)
+            VALUES (?, ?, ?)
+            ON CONFLICT(category, item_id) DO UPDATE SET metadata = excluded.metadata
+            """,
+            (category, item_id, meta_json),
         )
 
 
@@ -590,13 +618,13 @@ def unset_featured(category: str, item_id: str) -> bool:
         return cursor.rowcount > 0
 
 
-def toggle_featured(category: str, item_id: str) -> bool:
+def toggle_featured(category: str, item_id: str, metadata: dict | None = None) -> bool:
     """Toggle featured state. Returns True if now featured, False if unfeatured."""
     if is_featured(category, item_id):
         unset_featured(category, item_id)
         return False
     else:
-        set_featured(category, item_id)
+        set_featured(category, item_id, metadata)
         return True
 
 

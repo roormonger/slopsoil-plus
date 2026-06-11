@@ -79,18 +79,33 @@ export function Jellyfin() {
         setConfig(configData.settings)
         setLoading(false)
       }
-      if (featuredData) setFeaturedIds(new Set(featuredData.items))
+      if (featuredData) setFeaturedIds(new Set(featuredData.items.map(i => i.item_id)))
     }
     loadConfig()
   }, [])
 
-  const handleToggleFeatured = async (itemName: string) => {
-    const result = await api.toggleFeatured('jellyfin', itemName)
+  const handleToggleFeatured = async (item: any) => {
+    const imageUrl = (item.ImageTags?.Primary && config?.jellyfin_url)
+      ? `${config.jellyfin_url}/Items/${item.Id}/Images/Primary?tag=${item.ImageTags.Primary}&quality=90&maxWidth=100&maxHeight=150`
+      : null
+    const metadata = {
+      Id: item.Id,
+      Name: item.Name,
+      Type: item.Type,
+      ProductionYear: item.ProductionYear ?? null,
+      CommunityRating: item.CommunityRating ?? null,
+      RunTimeTicks: item.RunTimeTicks ?? null,
+      Overview: item.Overview ?? null,
+      ImageTags: item.ImageTags ?? null,
+      UserData: item.UserData ?? null,
+      image_url: imageUrl,
+    }
+    const result = await api.toggleFeatured('jellyfin', item.Name, metadata)
     if (result !== null) {
       setFeaturedIds(prev => {
         const next = new Set(prev)
-        if (result.featured) next.add(itemName)
-        else next.delete(itemName)
+        if (result.featured) next.add(item.Name)
+        else next.delete(item.Name)
         return next
       })
     }
@@ -248,7 +263,7 @@ export function Jellyfin() {
         <div className="flex items-center gap-2 flex-shrink-0">
           {isAdmin && (
             <button
-              onClick={() => handleToggleFeatured(item.Name)}
+              onClick={() => handleToggleFeatured(item)}
               className={`p-1.5 rounded-lg transition-colors ${
                 featuredIds.has(item.Name)
                   ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10'
