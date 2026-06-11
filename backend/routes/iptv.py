@@ -3,16 +3,48 @@
 Handles IPTV source management and M3U playlist handling.
 """
 
+import hashlib
 import logging
+import urllib.request
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 import backend.database as db
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/iptv")
+
+# Simple in-memory cache: url_hash -> (content_type, bytes)
+_logo_cache: dict[str, tuple[str, bytes]] = {}
+_MAX_CACHE = 2000
+
+
+@router.get("/logo-proxy")
+async def logo_proxy(url: str) -> Response:
+    """Proxy an external logo image to avoid browser CORS issues."""
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Invalid URL")
+
+    key = hashlib.md5(url.encode()).hexdigest()
+    if key in _logo_cache:
+        ct, data = _logo_cache[key]
+        return Response(content=data, media_type=ct, headers={"Cache-Control": "public, max-age=86400"})
+
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            ct = resp.headers.get_content_type() or "image/png"
+            data = resp.read(512 * 1024)  # cap at 512 KB
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Could not fetch logo: {exc}")
+
+    if len(_logo_cache) < _MAX_CACHE:
+        _logo_cache[key] = (ct, data)
+
+    return Response(content=data, media_type=ct, headers={"Cache-Control": "public, max-age=86400"})
 
 
 class IPTVSourceResponse(BaseModel):

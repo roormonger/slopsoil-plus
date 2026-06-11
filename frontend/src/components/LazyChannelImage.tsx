@@ -9,17 +9,22 @@ interface Props {
   className?: string
 }
 
+function proxyUrl(src: string): string {
+  return `/api/iptv/logo-proxy?url=${encodeURIComponent(src)}`
+}
+
 export function LazyChannelImage({ src, alt, className = '' }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
+  const proxied = src ? proxyUrl(src) : null
 
   useEffect(() => {
-    if (!src) {
+    if (!proxied) {
       setStatus('error')
       return
     }
 
-    const cached = _cache.get(src)
+    const cached = _cache.get(proxied)
     if (cached === 'ok') { setStatus('ok'); return }
     if (cached === 'error') { setStatus('error'); return }
 
@@ -31,34 +36,34 @@ export function LazyChannelImage({ src, alt, className = '' }: Props) {
         if (!entries[0].isIntersecting) return
         observer.disconnect()
 
-        if (_cache.get(src) === 'ok') { setStatus('ok'); return }
-        if (_cache.get(src) === 'error') { setStatus('error'); return }
+        if (_cache.get(proxied) === 'ok') { setStatus('ok'); return }
+        if (_cache.get(proxied) === 'error') { setStatus('error'); return }
 
-        _cache.set(src, 'loading')
+        _cache.set(proxied, 'loading')
         setStatus('loading')
 
         const img = new Image()
         img.onload = () => {
-          _cache.set(src, 'ok')
+          _cache.set(proxied, 'ok')
           setStatus('ok')
         }
         img.onerror = () => {
-          _cache.set(src, 'error')
+          _cache.set(proxied, 'error')
           setStatus('error')
         }
-        img.src = src
+        img.src = proxied
       },
       { rootMargin: '200px' }
     )
 
     observer.observe(el)
     return () => observer.disconnect()
-  }, [src])
+  }, [proxied])
 
   return (
     <div ref={ref} className={`flex-shrink-0 bg-slate-800 rounded overflow-hidden flex items-center justify-center ${className}`}>
-      {status === 'ok' && src ? (
-        <img src={src} alt={alt} className="w-full h-full object-contain" loading="lazy" />
+      {status === 'ok' && proxied ? (
+        <img src={proxied} alt={alt} className="w-full h-full object-contain" />
       ) : (
         <Tv className="w-5 h-5 text-slate-600" />
       )}
