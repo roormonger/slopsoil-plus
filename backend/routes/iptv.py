@@ -8,7 +8,7 @@ import logging
 import urllib.request
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -99,6 +99,30 @@ async def add_iptv_source(request: IPTVSourceAddRequest) -> dict[str, Any]:
         }
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Failed to add source: {exc}")
+
+
+@router.post("/sources/upload")
+async def upload_iptv_source(
+    name: str = Field(..., min_length=1),
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    """Upload and parse an M3U playlist file."""
+    from cogs.iptv import parse_m3u, _get_epg_url
+    try:
+        text = (await file.read()).decode("utf-8", errors="replace")
+        channels = parse_m3u(text)
+        epg_url = _get_epg_url(text)
+        url = f"file://{file.filename or 'upload'}"
+        db.upsert_iptv_source(name, url, channels, epg_url=epg_url)
+        return {
+            "message": f"Added source '{name}' with {len(channels)} channels",
+            "name": name,
+            "channel_count": len(channels),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid M3U file: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to process file: {exc}")
 
 
 @router.delete("/sources/{name}")

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Loader2, Trash2, Play, ArrowLeft, Star, Search, ChevronLeft, ChevronRight, Tv } from 'lucide-react'
+import { Loader2, Play, ArrowLeft, Star, Search, ChevronLeft, ChevronRight, Tv } from 'lucide-react'
 import { LazyChannelImage } from '../components/LazyChannelImage'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -26,12 +26,6 @@ export function Iptv() {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<'name' | 'channel_number'>('name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
-  const [showModal, setShowModal] = useState(false)
-  const [newName, setNewName] = useState('')
-  const [newUrl, setNewUrl] = useState('')
-  const [nameError, setNameError] = useState('')
-  const [urlError, setUrlError] = useState('')
-  const [adding, setAdding] = useState(false)
   const catScrollRef = useRef<HTMLDivElement>(null)
 
   const loadSources = async () => {
@@ -134,52 +128,6 @@ export function Iptv() {
     await api.executeCommand(selectedGuild, 'tv', channelName, selectedVoiceChannel)
   }
 
-  const handleDelete = async (name: string) => {
-    const success = await api.deleteIptvSource(name)
-    if (success) await loadSources()
-  }
-
-  const handleAdd = async () => {
-    // Validation
-    let hasError = false
-    if (!newName.trim()) {
-      setNameError('Name is required')
-      hasError = true
-    } else {
-      const existingNames = sources.map((s) => s.name.toLowerCase())
-      if (existingNames.includes(newName.trim().toLowerCase())) {
-        setNameError('A source with this name already exists')
-        hasError = true
-      }
-    }
-    if (!newUrl.trim()) {
-      setUrlError('URL is required')
-      hasError = true
-    } else if (!newUrl.match(/^https?:\/\/.+/i)) {
-      setUrlError('Please enter a valid HTTP or HTTPS URL')
-      hasError = true
-    }
-    if (hasError) return
-
-    setAdding(true)
-    const success = await api.addIptvSource(newName.trim(), newUrl.trim())
-    if (success) {
-      setShowModal(false)
-      setNewName('')
-      setNewUrl('')
-      await loadSources()
-    }
-    setAdding(false)
-  }
-
-  const openModal = () => {
-    setShowModal(true)
-    setNewName('')
-    setNewUrl('')
-    setNameError('')
-    setUrlError('')
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -211,11 +159,6 @@ export function Iptv() {
             </p>
           </div>
         </div>
-        {view === 'list' && isAdmin && (
-          <Button onClick={openModal} className="bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30">
-            Add New
-          </Button>
-        )}
       </div>
 
       {/* Top container — sources list stays static; channel view gets category scroller + search/sort */}
@@ -297,11 +240,6 @@ export function Iptv() {
               <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
                 <Tv className="w-12 h-12 text-slate-500" />
                 <p className="text-slate-400">No IPTV sources configured</p>
-                {isAdmin && (
-                  <Button onClick={openModal} className="bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30">
-                    Add your first source
-                  </Button>
-                )}
               </div>
             ) : (
               sources.map((source) => (
@@ -314,15 +252,6 @@ export function Iptv() {
                     <p className="font-medium text-slate-200">{source.name}</p>
                     <p className="text-sm text-slate-400">{source.channel_count} channels</p>
                   </div>
-                  {isAdmin && (
-                    <Button
-                      variant="ghost" size="sm"
-                      onClick={(e) => { e.stopPropagation(); handleDelete(source.name) }}
-                      className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
                 </div>
               ))
             )
@@ -376,55 +305,6 @@ export function Iptv() {
           )}
         </div>
       </div>
-
-      {/* Add Source Modal */}
-      {showModal && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
-          onClick={() => setShowModal(false)}
-        >
-          <div
-            className="glass-card rounded-2xl p-6 w-full max-w-md space-y-4 m-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-xl font-semibold text-slate-200">Add IPTV Source</h3>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-400">Source Name</label>
-              <Input
-                value={newName}
-                onChange={(e) => {
-                  setNewName(e.target.value)
-                  setNameError('')
-                }}
-                placeholder="e.g., MyIPTV"
-                className="glass-input text-slate-200"
-              />
-              {nameError && <p className="text-sm text-red-400">{nameError}</p>}
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-400">M3U URL</label>
-              <Input
-                value={newUrl}
-                onChange={(e) => {
-                  setNewUrl(e.target.value)
-                  setUrlError('')
-                }}
-                placeholder="http://example.com/playlist.m3u"
-                className="glass-input text-slate-200"
-              />
-              {urlError && <p className="text-sm text-red-400">{urlError}</p>}
-            </div>
-            <div className="flex gap-2 pt-2">
-              <Button variant="outline" onClick={() => setShowModal(false)} className="flex-1 glass-light border-white/10 text-slate-300 hover:bg-white/10">
-                Cancel
-              </Button>
-              <Button onClick={handleAdd} disabled={adding} className="flex-1 bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30">
-                {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

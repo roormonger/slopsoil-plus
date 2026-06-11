@@ -240,6 +240,24 @@ export function useApi() {
     }
   }, [showMessage])
 
+  const uploadIptvSource = useCallback(async (name: string, file: File): Promise<boolean> => {
+    try {
+      const form = new FormData()
+      form.append('name', name)
+      form.append('file', file)
+      const res = await fetch(`${API_URL}/iptv/sources/upload`, {
+        method: 'POST',
+        body: form,
+      })
+      if (!res.ok) throw new Error('Failed to upload IPTV source')
+      showMessage('IPTV source uploaded successfully', 'success')
+      return true
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to upload IPTV source')
+      return false
+    }
+  }, [showMessage])
+
   const deleteIptvSource = useCallback(async (name: string): Promise<boolean> => {
     try {
       const res = await fetch(`${API_URL}/iptv/sources/${encodeURIComponent(name)}`, { method: 'DELETE' })
@@ -916,6 +934,7 @@ export function useApi() {
     fetchIptvSources,
     fetchIptvChannels,
     addIptvSource,
+    uploadIptvSource,
     toggleIptvSource,
     deleteIptvSource,
     fetchBookmarks,

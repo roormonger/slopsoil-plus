@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
-import { Loader2, Eye, EyeOff, Lock, Zap, Star, LayoutDashboard, Settings2, Database, Radio } from 'lucide-react'
-import type { BotStatus } from '../types'
+import { useState, useEffect, useRef } from 'react'
+import { Loader2, Eye, EyeOff, Lock, Zap, Star, LayoutDashboard, Settings2, Database, Radio, Plus, Upload, Trash2 } from 'lucide-react'
+import type { BotStatus, IptvSource } from '../types'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useApi } from '../hooks/useApi'
@@ -75,6 +75,18 @@ export function Settings() {
   const [loading, setLoading] = useState(true)
   const [botStatus, setBotStatus] = useState<BotStatus | null>(null)
 
+  // IPTV Playlists state
+  const [iptvSources, setIptvSources] = useState<IptvSource[]>([])
+  const [showIptvModal, setShowIptvModal] = useState(false)
+  const [newSourceName, setNewSourceName] = useState('')
+  const [newSourceUrl, setNewSourceUrl] = useState('')
+  const [sourceNameError, setSourceNameError] = useState('')
+  const [sourceUrlError, setSourceUrlError] = useState('')
+  const [addingSource, setAddingSource] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
+  const [modalDragOver, setModalDragOver] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const isEnvControlled = (key: keyof Config): boolean => {
     const result = settingsEnv[key as string]?.from_env ?? false
     if (key.includes('jellyfin')) {
@@ -91,6 +103,155 @@ export function Settings() {
     setSavingFeatured(false)
   }
 
+  // IPTV Playlists handlers
+  const loadIptvSources = async () => {
+    const data = await api.fetchIptvSources()
+    if (data) setIptvSources(data)
+  }
+
+  const openIptvModal = () => {
+    setShowIptvModal(true)
+    setNewSourceName('')
+    setNewSourceUrl('')
+    setSourceNameError('')
+    setSourceUrlError('')
+  }
+
+  const handleAddSource = async () => {
+    let hasError = false
+    if (!newSourceName.trim()) {
+      setSourceNameError('Name is required')
+      hasError = true
+    } else if (iptvSources.some(s => s.name.toLowerCase() === newSourceName.trim().toLowerCase())) {
+      setSourceNameError('A source with this name already exists')
+      hasError = true
+    }
+    if (!newSourceUrl.trim()) {
+      setSourceUrlError('URL is required')
+      hasError = true
+    } else if (!newSourceUrl.match(/^https?:\/\/.+/i)) {
+      setSourceUrlError('Please enter a valid HTTP or HTTPS URL')
+      hasError = true
+    }
+    if (hasError) return
+
+    setAddingSource(true)
+    const success = await api.addIptvSource(newSourceName.trim(), newSourceUrl.trim())
+    if (success) {
+      setShowIptvModal(false)
+      setNewSourceName('')
+      setNewSourceUrl('')
+      await loadIptvSources()
+    }
+    setAddingSource(false)
+  }
+
+  const handleDeleteSource = async (name: string) => {
+    const success = await api.deleteIptvSource(name)
+    if (success) await loadIptvSources()
+  }
+
+  const handleToggleSource = async (name: string) => {
+    const source = iptvSources.find(s => s.name === name)
+    if (!source) return
+    const success = await api.toggleIptvSource(name, !source.enabled)
+    if (success) await loadIptvSources()
+  }
+
+  const handleFileDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOver(false)
+    const files = Array.from(e.dataTransfer.files)
+    const m3u = files.find(f => f.name.match(/\.(m3u|m3u8)$/i))
+    if (!m3u) {
+      api.showMessage('Please drop an .m3u or .m3u8 file', 'error')
+      return
+    }
+    const baseName = m3u.name.replace(/\.(m3u|m3u8)$/i, '')
+    let name = baseName
+    let counter = 1
+    while (iptvSources.some(s => s.name.toLowerCase() === name.toLowerCase())) {
+      name = `${baseName} (${counter})`
+      counter++
+    }
+    setAddingSource(true)
+    const success = await api.uploadIptvSource(name, m3u)
+    if (success) await loadIptvSources()
+    setAddingSource(false)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOver(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOver(false)
+  }
+
+  const handleModalDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setModalDragOver(true)
+  }
+
+  const handleModalDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setModalDragOver(false)
+  }
+
+  const handleModalFileDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setModalDragOver(false)
+    const files = Array.from(e.dataTransfer.files)
+    const m3u = files.find(f => f.name.match(/\.(m3u|m3u8)$/i))
+    if (!m3u) {
+      api.showMessage('Please drop an .m3u or .m3u8 file', 'error')
+      return
+    }
+    const baseName = m3u.name.replace(/\.(m3u|m3u8)$/i, '')
+    let name = baseName
+    let counter = 1
+    while (iptvSources.some(s => s.name.toLowerCase() === name.toLowerCase())) {
+      name = `${baseName} (${counter})`
+      counter++
+    }
+    setAddingSource(true)
+    const success = await api.uploadIptvSource(name, m3u)
+    if (success) {
+      setShowIptvModal(false)
+      await loadIptvSources()
+    }
+    setAddingSource(false)
+  }
+
+  const handleBrowseFile = async (file: File) => {
+    if (!file.name.match(/\.(m3u|m3u8)$/i)) {
+      api.showMessage('Please select an .m3u or .m3u8 file', 'error')
+      return
+    }
+    const baseName = file.name.replace(/\.(m3u|m3u8)$/i, '')
+    let name = baseName
+    let counter = 1
+    while (iptvSources.some(s => s.name.toLowerCase() === name.toLowerCase())) {
+      name = `${baseName} (${counter})`
+      counter++
+    }
+    setAddingSource(true)
+    const success = await api.uploadIptvSource(name, file)
+    if (success) {
+      setShowIptvModal(false)
+      await loadIptvSources()
+    }
+    setAddingSource(false)
+  }
+
   useEffect(() => {
     const loadData = async () => {
       const [data, status] = await Promise.all([api.fetchConfig(), api.fetchStatus()])
@@ -104,6 +265,7 @@ export function Settings() {
       }
       const fs = await api.fetchFeaturedSettings()
       if (fs) setFeaturedSettings(fs)
+      await loadIptvSources()
       setLoading(false)
     }
     loadData()
@@ -295,136 +457,309 @@ export function Settings() {
 
       {/* Sources Tab */}
       {activeTab === 'sources' && (
-        <div className="grid gap-6 md:grid-cols-2">
-          <div className="glass-card rounded-2xl p-6 space-y-6">
-            <div>
-              <h3 className="text-xl font-semibold text-slate-200 mb-1">IPTV</h3>
-              <p className="text-sm text-slate-400">TVheadend connection settings</p>
-            </div>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-400 flex items-center gap-2">
-                  TVheadend URL
-                  {isEnvControlled('tvheadend_url') && (
-                    <span className="text-xs text-amber-400 flex items-center gap-1" title="Controlled by TVHEADEND_URL environment variable">
-                      <Lock className="h-3 w-3" />
-                      (env)
-                    </span>
-                  )}
-                </label>
-                <Input
-                  value={config.tvheadend_url}
-                  onChange={(e) => setConfig({ ...config, tvheadend_url: e.target.value })}
-                  placeholder="http://192.168.1.100:9981"
-                  className="glass-input text-slate-200"
-                  disabled={isEnvControlled('tvheadend_url')}
-                />
+        <div className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="glass-card rounded-2xl p-6 space-y-6 h-[380px]">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-200 mb-1">TVheadend</h3>
+                <p className="text-sm text-slate-400">TVheadend connection settings</p>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-400 flex items-center gap-2">
-                  TVheadend User
-                  {isEnvControlled('tvheadend_user') && (
-                    <span className="text-xs text-amber-400 flex items-center gap-1" title="Controlled by TVHEADEND_USER environment variable">
-                      <Lock className="h-3 w-3" />
-                      (env)
-                    </span>
-                  )}
-                </label>
-                <Input
-                  value={config.tvheadend_user}
-                  onChange={(e) => setConfig({ ...config, tvheadend_user: e.target.value })}
-                  placeholder="admin"
-                  className="glass-input text-slate-200"
-                  disabled={isEnvControlled('tvheadend_user')}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-400 flex items-center gap-2">
-                  TVheadend Password
-                  {isEnvControlled('tvheadend_pass') && (
-                    <span className="text-xs text-amber-400 flex items-center gap-1" title="Controlled by TVHEADEND_PASS environment variable">
-                      <Lock className="h-3 w-3" />
-                      (env)
-                    </span>
-                  )}
-                </label>
-                <div className="relative">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-400 flex items-center gap-2">
+                    TVheadend URL
+                    {isEnvControlled('tvheadend_url') && (
+                      <span className="text-xs text-amber-400 flex items-center gap-1" title="Controlled by TVHEADEND_URL environment variable">
+                        <Lock className="h-3 w-3" />
+                        (env)
+                      </span>
+                    )}
+                  </label>
                   <Input
-                    type={showTvPass ? 'text' : 'password'}
-                    value={config.tvheadend_pass}
-                    onChange={(e) => setConfig({ ...config, tvheadend_pass: e.target.value })}
-                    placeholder="password"
-                    className="pr-10 glass-input text-slate-200"
-                    disabled={isEnvControlled('tvheadend_pass')}
+                    value={config.tvheadend_url}
+                    onChange={(e) => setConfig({ ...config, tvheadend_url: e.target.value })}
+                    placeholder="http://192.168.1.100:9981"
+                    className="glass-input text-slate-200"
+                    disabled={isEnvControlled('tvheadend_url')}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowTvPass(!showTvPass)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 disabled:opacity-50"
-                    disabled={isEnvControlled('tvheadend_pass')}
-                  >
-                    {showTvPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-400 flex items-center gap-2">
+                    TVheadend User
+                    {isEnvControlled('tvheadend_user') && (
+                      <span className="text-xs text-amber-400 flex items-center gap-1" title="Controlled by TVHEADEND_USER environment variable">
+                        <Lock className="h-3 w-3" />
+                        (env)
+                      </span>
+                    )}
+                  </label>
+                  <Input
+                    value={config.tvheadend_user}
+                    onChange={(e) => setConfig({ ...config, tvheadend_user: e.target.value })}
+                    placeholder="admin"
+                    className="glass-input text-slate-200"
+                    disabled={isEnvControlled('tvheadend_user')}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-400 flex items-center gap-2">
+                    TVheadend Password
+                    {isEnvControlled('tvheadend_pass') && (
+                      <span className="text-xs text-amber-400 flex items-center gap-1" title="Controlled by TVHEADEND_PASS environment variable">
+                        <Lock className="h-3 w-3" />
+                        (env)
+                      </span>
+                    )}
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type={showTvPass ? 'text' : 'password'}
+                      value={config.tvheadend_pass}
+                      onChange={(e) => setConfig({ ...config, tvheadend_pass: e.target.value })}
+                      placeholder="password"
+                      className="pr-10 glass-input text-slate-200"
+                      disabled={isEnvControlled('tvheadend_pass')}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowTvPass(!showTvPass)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 disabled:opacity-50"
+                      disabled={isEnvControlled('tvheadend_pass')}
+                    >
+                      {showTvPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className="glass-card rounded-2xl p-6 space-y-6">
-            <div>
-              <h3 className="text-xl font-semibold text-slate-200 mb-1">Jellyfin</h3>
-              <p className="text-sm text-slate-400">Jellyfin media server settings</p>
-            </div>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-400 flex items-center gap-2">
-                  Jellyfin URL
-                  {isEnvControlled('jellyfin_url') && (
-                    <span className="text-xs text-amber-400 flex items-center gap-1" title="Controlled by JELLYFIN_URL environment variable">
-                      <Lock className="h-3 w-3" />
-                      (env)
-                    </span>
-                  )}
-                </label>
-                <Input
-                  value={config.jellyfin_url}
-                  onChange={(e) => setConfig({ ...config, jellyfin_url: e.target.value })}
-                  placeholder="http://192.168.1.100:8096"
-                  className="glass-input text-slate-200"
-                  disabled={isEnvControlled('jellyfin_url')}
-                />
+            <div className="glass-card rounded-2xl p-6 space-y-6 h-[380px]">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-200 mb-1">Jellyfin</h3>
+                <p className="text-sm text-slate-400">Jellyfin media server settings</p>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-400 flex items-center gap-2">
-                  Jellyfin API Key
-                  {isEnvControlled('jellyfin_api_key') && (
-                    <span className="text-xs text-amber-400 flex items-center gap-1" title="Controlled by JELLYFIN_API_KEY environment variable">
-                      <Lock className="h-3 w-3" />
-                      (env)
-                    </span>
-                  )}
-                </label>
-                <div className="relative">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-400 flex items-center gap-2">
+                    Jellyfin URL
+                    {isEnvControlled('jellyfin_url') && (
+                      <span className="text-xs text-amber-400 flex items-center gap-1" title="Controlled by JELLYFIN_URL environment variable">
+                        <Lock className="h-3 w-3" />
+                        (env)
+                      </span>
+                    )}
+                  </label>
                   <Input
-                    type={showJfKey ? 'text' : 'password'}
-                    value={config.jellyfin_api_key}
-                    onChange={(e) => setConfig({ ...config, jellyfin_api_key: e.target.value })}
-                    placeholder="API key"
-                    className="pr-10 glass-input text-slate-200"
-                    disabled={isEnvControlled('jellyfin_api_key')}
+                    value={config.jellyfin_url}
+                    onChange={(e) => setConfig({ ...config, jellyfin_url: e.target.value })}
+                    placeholder="http://192.168.1.100:8096"
+                    className="glass-input text-slate-200"
+                    disabled={isEnvControlled('jellyfin_url')}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowJfKey(!showJfKey)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 disabled:opacity-50"
-                    disabled={isEnvControlled('jellyfin_api_key')}
-                  >
-                    {showJfKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-400 flex items-center gap-2">
+                    Jellyfin API Key
+                    {isEnvControlled('jellyfin_api_key') && (
+                      <span className="text-xs text-amber-400 flex items-center gap-1" title="Controlled by JELLYFIN_API_KEY environment variable">
+                        <Lock className="h-3 w-3" />
+                        (env)
+                      </span>
+                    )}
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type={showJfKey ? 'text' : 'password'}
+                      value={config.jellyfin_api_key}
+                      onChange={(e) => setConfig({ ...config, jellyfin_api_key: e.target.value })}
+                      placeholder="API key"
+                      className="pr-10 glass-input text-slate-200"
+                      disabled={isEnvControlled('jellyfin_api_key')}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowJfKey(!showJfKey)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 disabled:opacity-50"
+                      disabled={isEnvControlled('jellyfin_api_key')}
+                    >
+                      {showJfKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
+
+          {/* IPTV Playlists */}
+          <div
+            className={`glass-card rounded-2xl p-6 space-y-4 transition-colors h-[380px] flex flex-col ${dragOver ? 'ring-2 ring-primary/40' : ''}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleFileDrop}
+          >
+            <div className="flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-200 mb-1">IPTV Playlists</h3>
+                <p className="text-sm text-slate-400">{iptvSources.length} source{iptvSources.length !== 1 ? 's' : ''} — drag & drop .m3u files here</p>
+              </div>
+              <Button onClick={openIptvModal} className="bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {addingSource && (
+              <div className="flex items-center gap-2 text-sm text-slate-400">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Processing…
+              </div>
+            )}
+
+            <div className="space-y-2 overflow-y-auto min-h-0">
+              {iptvSources.length === 0 ? (
+                <div className="text-center py-8 border border-dashed border-white/10 rounded-xl">
+                  <Upload className="h-8 w-8 text-slate-500 mx-auto mb-2" />
+                  <p className="text-slate-400">No IPTV playlists added yet</p>
+                  <p className="text-xs text-slate-500 mt-1">Drag & drop an .m3u file or click + to add a URL</p>
+                </div>
+              ) : (
+                iptvSources.map((source) => (
+                  <div
+                    key={source.name}
+                    className="flex items-center justify-between p-3 rounded-xl glass-light border-white/5"
+                  >
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleSource(source.name)}
+                        className={`relative w-9 h-5 rounded-full transition-colors ${
+                          source.enabled ? 'bg-primary' : 'bg-slate-600'
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                            source.enabled ? 'translate-x-4' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                      <div>
+                        <p className="font-medium text-slate-200">{source.name}</p>
+                        <p className="text-xs text-slate-400">{source.channel_count} channels</p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteSource(source.name)}
+                      className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
+        </div>
+
+          {/* Add Source Modal */}
+          {showIptvModal && (
+            <div
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
+              onClick={() => setShowIptvModal(false)}
+            >
+              <div
+                className="glass-card rounded-2xl p-6 w-full max-w-md space-y-4 m-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-xl font-semibold text-slate-200">Add IPTV Source</h3>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-400">Source Name</label>
+                  <Input
+                    value={newSourceName}
+                    onChange={(e) => {
+                      setNewSourceName(e.target.value)
+                      setSourceNameError('')
+                    }}
+                    placeholder="e.g., MyIPTV"
+                    className="glass-input text-slate-200"
+                  />
+                  {sourceNameError && <p className="text-sm text-red-400">{sourceNameError}</p>}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-400">M3U URL</label>
+                  <Input
+                    value={newSourceUrl}
+                    onChange={(e) => {
+                      setNewSourceUrl(e.target.value)
+                      setSourceUrlError('')
+                    }}
+                    placeholder="http://example.com/playlist.m3u"
+                    className="glass-input text-slate-200"
+                  />
+                  {sourceUrlError && <p className="text-sm text-red-400">{sourceUrlError}</p>}
+                </div>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-white/10" />
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span className="bg-[#1e2b3a] px-3 text-xs text-slate-400">or</span>
+                  </div>
+                </div>
+
+                <div
+                  className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
+                    modalDragOver
+                      ? 'border-primary/60 bg-primary/5'
+                      : 'border-white/10 hover:border-white/20'
+                  }`}
+                  onDragOver={handleModalDragOver}
+                  onDragLeave={handleModalDragLeave}
+                  onDrop={handleModalFileDrop}
+                >
+                  <Upload className="h-8 w-8 text-slate-500 mx-auto mb-2" />
+                  <p className="text-sm text-slate-400 mb-3">Drag & drop an .m3u or .m3u8 file here</p>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".m3u,.m3u8"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) handleBrowseFile(file)
+                      if (e.target) e.target.value = ''
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="glass-light border-white/10 text-slate-300 hover:bg-white/10"
+                  >
+                    Browse files
+                  </Button>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowIptvModal(false)}
+                    className="flex-1 glass-light border-white/10 text-slate-300 hover:bg-white/10"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleAddSource}
+                    disabled={addingSource}
+                    className="flex-1 bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30"
+                  >
+                    {addingSource ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
