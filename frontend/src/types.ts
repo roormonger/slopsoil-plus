@@ -105,6 +105,7 @@ export interface IptvChannel {
   tvg_id: string | null
   group: string | null
   stream_url: string
+  logo_url: string | null
 }
 
 export interface Bookmark {

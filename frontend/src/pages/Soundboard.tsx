@@ -70,19 +70,22 @@ export function Soundboard() {
   useEffect(() => {
     const load = async () => {
       setLoading(true)
-      const [system, personal, config, featuredData] = await Promise.all([
-        api.fetchSystemSounds(),
-        api.fetchMySounds(),
-        api.fetchConfig(),
-        api.fetchFeatured('soundboard'),
-      ])
-      if (system) setSystemSounds(system)
-      if (personal) setPersonalSounds(personal)
-      if (config?.settings?.soundboard_user_quota) {
-        setQuota(Number(config.settings.soundboard_user_quota) || 10)
+      try {
+        const [system, personal, config, featuredData] = await Promise.all([
+          api.fetchSystemSounds(),
+          api.fetchMySounds(),
+          api.fetchConfig(),
+          api.fetchFeatured('soundboard'),
+        ])
+        if (system) setSystemSounds(system)
+        if (personal) setPersonalSounds(personal)
+        if (config?.settings?.soundboard_user_quota) {
+          setQuota(Number(config.settings.soundboard_user_quota) || 10)
+        }
+        if (featuredData) setFeaturedIds(new Set(featuredData.items.map(i => i.item_id)))
+      } finally {
+        setLoading(false)
       }
-      if (featuredData) setFeaturedIds(new Set(featuredData.items.map(i => i.item_id)))
-      setLoading(false)
     }
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps

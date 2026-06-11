@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from backend.bot_runner import get_source_manager
+import backend.database as db
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/iptv")
@@ -29,6 +29,7 @@ class IPTVChannelResponse(BaseModel):
     tvg_id: str | None = None
     group: str | None = None
     stream_url: str
+    logo_url: str | None = None
 
 
 class IPTVSourceAddRequest(BaseModel):
@@ -39,11 +40,8 @@ class IPTVSourceAddRequest(BaseModel):
 
 @router.get("/sources", response_model=list[IPTVSourceResponse])
 async def get_iptv_sources() -> list[IPTVSourceResponse]:
-    """Get all IPTV sources from SourceManager."""
-    sm = get_source_manager()
-    if sm is None:
-        return []
-    sources = sm.get_sources()
+    """Get all IPTV sources."""
+    sources = db.get_iptv_sources()
     return [
         IPTVSourceResponse(
             name=src["name"],
@@ -59,12 +57,9 @@ async def get_iptv_sources() -> list[IPTVSourceResponse]:
 async def add_iptv_source(request: IPTVSourceAddRequest) -> dict[str, Any]:
     """Add a new IPTV source by fetching and parsing the M3U playlist."""
     from cogs.iptv import fetch_and_parse
-    sm = get_source_manager()
-    if sm is None:
-        raise HTTPException(status_code=503, detail="SourceManager not available")
     try:
         channels, epg_url = await fetch_and_parse(request.url)
-        sm.add_source(request.name, request.url, channels, epg_url=epg_url)
+        db.upsert_iptv_source(request.name, request.url, channels, epg_url=epg_url)
         return {
             "message": f"Added source '{request.name}' with {len(channels)} channels",
             "name": request.name,
@@ -77,35 +72,27 @@ async def add_iptv_source(request: IPTVSourceAddRequest) -> dict[str, Any]:
 @router.delete("/sources/{name}")
 async def delete_iptv_source(name: str) -> dict[str, str]:
     """Remove an IPTV source by name."""
-    sm = get_source_manager()
-    if sm is None:
-        raise HTTPException(status_code=503, detail="SourceManager not available")
-    sources = sm.get_sources()
-    for i, src in enumerate(sources):
-        if src["name"].lower() == name.lower():
-            removed_name = sm.remove_source(i)
-            return {"message": f"Removed source '{removed_name}'"}
-    raise HTTPException(status_code=404, detail="Source not found")
+    deleted = db.delete_iptv_source(name)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return {"message": f"Removed source '{name}'"}
 
 
 @router.get("/sources/{name}/channels", response_model=list[IPTVChannelResponse])
 async def get_iptv_channels(name: str) -> list[IPTVChannelResponse]:
     """Get all channels for a specific IPTV source."""
-    sm = get_source_manager()
-    if sm is None:
-        raise HTTPException(status_code=503, detail="SourceManager not available")
-    sources = sm.get_sources()
+    sources = db.get_iptv_sources()
     for src in sources:
         if src["name"].lower() == name.lower():
-            channels = src.get("channels", [])
             return [
                 IPTVChannelResponse(
                     name=ch.get("name", "Unknown"),
                     tvg_id=ch.get("tvg_id") or None,
                     group=ch.get("group") or None,
                     stream_url=ch.get("stream_url", ""),
+                    logo_url=ch.get("logo_url") or None,
                 )
-                for ch in channels
+                for ch in src.get("channels", [])
             ]
     raise HTTPException(status_code=404, detail="Source not found")
 
@@ -113,14 +100,11 @@ async def get_iptv_channels(name: str) -> list[IPTVChannelResponse]:
 @router.post("/sources/{name}/toggle")
 async def toggle_iptv_source(name: str) -> dict[str, Any]:
     """Toggle enable/disable state of an IPTV source."""
-    sm = get_source_manager()
-    if sm is None:
-        raise HTTPException(status_code=503, detail="SourceManager not available")
-    sources = sm.get_sources()
-    for i, src in enumerate(sources):
+    sources = db.get_iptv_sources()
+    for src in sources:
         if src["name"].lower() == name.lower():
             new_state = not src.get("enabled", True)
-            sm.set_enabled(i, new_state)
+            db.set_iptv_source_enabled(src["name"], new_state)
             return {
                 "message": f"Source '{src['name']}' {'enabled' if new_state else 'disabled'}",
                 "enabled": new_state,

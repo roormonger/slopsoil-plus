@@ -63,6 +63,7 @@ def parse_m3u(text: str) -> list[dict]:
                 "name": display_name or attrs.get("tvg-name", "unknown"),
                 "tvg_id": attrs.get("tvg-id", ""),
                 "group": attrs.get("group-title", ""),
+                "logo_url": attrs.get("tvg-logo", ""),
             }
         elif not line.startswith("#") and pending is not None:
             pending["stream_url"] = line
@@ -306,51 +307,24 @@ async def probe_stream(url: str) -> dict | None:
 
 
 class SourceManager:
-    """Manages IPTV playlist sources and global source toggles with JSON persistence."""
+    """Manages IPTV playlist sources backed by the SQLite database."""
 
-    def __init__(self, persist_path: str | Path):
-        self._path = Path(persist_path)
-        self._sources: list[dict] = []
-        self._tvh_enabled: bool = True
-        self._load()
-
-    def _load(self) -> None:
-        if not self._path.exists():
-            return
-        try:
-            data = json.loads(self._path.read_text())
-            # Support old format (plain list) and new format (dict with metadata).
-            if isinstance(data, list):
-                self._sources = data
-            else:
-                self._sources = data.get("sources", [])
-                self._tvh_enabled = data.get("tvh_enabled", True)
-            log.info(
-                "loaded %d IPTV source(s) from %s", len(self._sources), self._path
-            )
-        except Exception as exc:
-            log.warning("failed to load IPTV sources from %s: %s", self._path, exc)
-            self._sources = []
-
-    def _save(self) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(
-            json.dumps(
-                {"tvh_enabled": self._tvh_enabled, "sources": self._sources}, indent=2
-            )
-        )
+    def __init__(self):
+        from backend import database as db
+        self._db = db
+        sources = db.get_iptv_sources()
+        log.info("loaded %d IPTV source(s) from database", len(sources))
 
     @property
     def tvh_enabled(self) -> bool:
-        return self._tvh_enabled
+        return self._db.get_tvh_enabled()
 
     def set_tvh_enabled(self, enabled: bool) -> None:
-        self._tvh_enabled = enabled
-        self._save()
+        self._db.set_tvh_enabled(enabled)
 
     def get_sources(self) -> list[dict]:
-        """Return a shallow copy of the sources list."""
-        return list(self._sources)
+        """Return all sources from the DB."""
+        return self._db.get_iptv_sources()
 
     def add_source(
         self,
@@ -359,29 +333,14 @@ class SourceManager:
         channels: list[dict],
         epg_url: str | None = None,
     ) -> None:
-        """Add a new source or replace an existing one with the same name."""
-        entry: dict = {
-            "name": name,
-            "url": url,
-            "channels": channels,
-        }
-        if epg_url:
-            entry["epg_url"] = epg_url
-        for i, src in enumerate(self._sources):
-            if src["name"].lower() == name.lower():
-                entry["enabled"] = src.get("enabled", False)
-                self._sources[i] = entry
-                self._save()
-                return
-        entry["enabled"] = True
-        self._sources.append(entry)
-        self._save()
+        """Add a new source or update an existing one with the same name."""
+        self._db.upsert_iptv_source(name, url, channels, epg_url=epg_url)
 
     def get_epg_sources(self) -> list[tuple[str, str]]:
         """Return [(source_name, epg_url)] for enabled sources with an EPG URL."""
         return [
             (src["name"], src["epg_url"])
-            for src in self._sources
+            for src in self._db.get_iptv_sources()
             if src.get("enabled") and src.get("epg_url")
         ]
 
@@ -400,7 +359,6 @@ class SourceManager:
                 with urllib.request.urlopen(req, timeout=10) as resp:
                     return resp.read(1024).decode("utf-8", errors="replace")  # type: ignore[no-any-return]
             except Exception:
-                # Server may not support Range; fall back to a plain GET and read 1 KB
                 req2 = urllib.request.Request(
                     m3u_url, headers={"User-Agent": "slopsoil/1.0"}
                 )
@@ -408,7 +366,7 @@ class SourceManager:
                     return resp.read(1024).decode("utf-8", errors="replace")  # type: ignore[no-any-return]
 
         updated = 0
-        for i, src in enumerate(self._sources):
+        for src in self._db.get_iptv_sources():
             if src.get("epg_url"):
                 continue
             m3u_url = src.get("url")
@@ -418,33 +376,27 @@ class SourceManager:
                 header_text = await asyncio.to_thread(_peek, m3u_url)
                 epg_url = _get_epg_url(header_text)
                 if epg_url:
-                    self._sources[i]["epg_url"] = epg_url
+                    self._db.update_iptv_source_epg(src["name"], epg_url)
                     updated += 1
-                    log.info(
-                        "backfilled epg_url for source '%s': %s", src["name"], epg_url
-                    )
+                    log.info("backfilled epg_url for source '%s': %s", src["name"], epg_url)
             except Exception as exc:
                 log.debug("could not backfill epg_url for '%s': %s", src["name"], exc)
 
-        if updated:
-            self._save()
         return updated
 
-    def set_enabled(self, idx: int, enabled: bool) -> None:
-        self._sources[idx]["enabled"] = enabled
-        self._save()
+    def set_enabled(self, name: str, enabled: bool) -> None:
+        """Enable or disable a source by name."""
+        self._db.set_iptv_source_enabled(name, enabled)
 
-    def remove_source(self, idx: int) -> str:
-        """Remove a source by index. Returns the removed source's name."""
-        name = str(self._sources[idx]["name"])
-        del self._sources[idx]
-        self._save()
+    def remove_source(self, name: str) -> str:
+        """Remove a source by name. Returns the name."""
+        self._db.delete_iptv_source(name)
         return name
 
     def get_iptv_channels(self) -> list[dict]:
         """Return all channels from enabled sources with a 'source' field added."""
         result: list[dict] = []
-        for src in self._sources:
+        for src in self._db.get_iptv_sources():
             if src.get("enabled"):
                 for ch in src.get("channels", []):
                     result.append({**ch, "source": src["name"]})
@@ -525,7 +477,7 @@ class IPTVCog(commands.Cog, name="IPTV"):
                 await ctx.send(f'ambiguous name "{name}" — matches: {names}')
                 return
             idx, src = matches[0]
-            self.sm.set_enabled(idx, want_enabled)
+            self.sm.set_enabled(src["name"], want_enabled)
             label = "enabled" if want_enabled else "disabled"
             await ctx.send(f"**{src['name']}** {label}")
             return
@@ -586,7 +538,8 @@ class IPTVCog(commands.Cog, name="IPTV"):
             return
 
         idx = int(text) - 1
-        name = self.sm.remove_source(idx)
+        name = sources[idx]["name"]
+        self.sm.remove_source(name)
         await ctx.send(f"removed source **{name}**")
 
 
@@ -597,7 +550,7 @@ def _data_dir() -> Path:
 
 
 async def setup(bot: commands.Bot):
-    sm = SourceManager(_data_dir() / "sources.json")
+    sm = SourceManager()
     bot.source_manager = sm  # type: ignore[attr-defined]
     log.info("IPTV SourceManager loaded (%d source(s))", len(sm.get_sources()))
     await bot.add_cog(IPTVCog(bot, sm))

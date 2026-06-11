@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Loader2, Trash2, Play, ArrowLeft, Star } from 'lucide-react'
+import { LazyChannelImage } from '../components/LazyChannelImage'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useApi } from '../hooks/useApi'
@@ -33,12 +34,16 @@ export function Iptv() {
 
   useEffect(() => {
     const init = async () => {
-      await loadSources()
-      const featuredData = await api.fetchFeatured('iptv')
-      if (featuredData) setFeaturedIds(new Set(featuredData.items.map(i => i.item_id)))
-      setLoading(false)
+      try {
+        await loadSources()
+        const featuredData = await api.fetchFeatured('iptv')
+        if (featuredData) setFeaturedIds(new Set(featuredData.items.map(i => i.item_id)))
+      } finally {
+        setLoading(false)
+      }
     }
     init()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleViewChannels = async (sourceName: string) => {
@@ -222,18 +227,21 @@ export function Iptv() {
                 <div className="p-8 text-center text-slate-400">No channels found in this source</div>
               ) : (
                 channels.map((ch, idx) => (
-                  <div key={`${ch.name}-${idx}`} className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-slate-200">{ch.name}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        {ch.group && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-slate-300">
-                            {ch.group}
-                          </span>
-                        )}
-                        {ch.tvg_id && (
-                          <span className="text-xs text-slate-500">ID: {ch.tvg_id}</span>
-                        )}
+                  <div key={`${ch.name}-${idx}`} className="flex items-center justify-between p-3 hover:bg-white/5 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <LazyChannelImage src={ch.logo_url} alt={ch.name} className="w-10 h-10 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="font-medium text-slate-200 truncate">{ch.name}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {ch.group && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-slate-300">
+                              {ch.group}
+                            </span>
+                          )}
+                          {ch.tvg_id && (
+                            <span className="text-xs text-slate-500 truncate">{ch.tvg_id}</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 ml-4">

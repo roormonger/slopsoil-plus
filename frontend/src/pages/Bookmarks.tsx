@@ -29,12 +29,16 @@ export function Bookmarks() {
 
   useEffect(() => {
     const init = async () => {
-      await loadBookmarks()
-      const featuredData = await api.fetchFeatured('bookmark')
-      if (featuredData) setFeaturedIds(new Set(featuredData.items.map(i => i.item_id)))
-      setLoading(false)
+      try {
+        await loadBookmarks()
+        const featuredData = await api.fetchFeatured('bookmark')
+        if (featuredData) setFeaturedIds(new Set(featuredData.items.map(i => i.item_id)))
+      } finally {
+        setLoading(false)
+      }
     }
     init()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleToggleFeatured = async (bm: Bookmark) => {

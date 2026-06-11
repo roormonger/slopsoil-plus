@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -184,6 +185,19 @@ def init_database() -> None:
             cursor.execute("SELECT thumbnail_url FROM bookmarks LIMIT 1")
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE bookmarks ADD COLUMN thumbnail_url TEXT")
+
+        # IPTV sources table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS iptv_sources (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                url TEXT NOT NULL,
+                channels TEXT NOT NULL DEFAULT '[]',
+                epg_url TEXT,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                added_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
         # Featured items table
         cursor.execute("""
@@ -395,7 +409,6 @@ def delete_bookmark(bookmark_id: int) -> bool:
 # User management functions
 
 import uuid
-import json
 from datetime import datetime, timezone
 
 
@@ -626,6 +639,95 @@ def toggle_featured(category: str, item_id: str, metadata: dict | None = None) -
     else:
         set_featured(category, item_id, metadata)
         return True
+
+
+# ─── IPTV sources ────────────────────────────────────────────────────────────
+
+def get_iptv_sources() -> list[dict[str, Any]]:
+    """Return all IPTV sources with their channels deserialized."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT name, url, channels, epg_url, enabled FROM iptv_sources ORDER BY added_at"
+        )
+        result = []
+        for row in cursor.fetchall():
+            try:
+                channels = json.loads(row["channels"])
+            except (json.JSONDecodeError, TypeError):
+                channels = []
+            result.append({
+                "name": row["name"],
+                "url": row["url"],
+                "channels": channels,
+                "epg_url": row["epg_url"],
+                "enabled": bool(row["enabled"]),
+            })
+        return result
+
+
+def upsert_iptv_source(
+    name: str,
+    url: str,
+    channels: list[dict],
+    epg_url: str | None = None,
+    enabled: bool = True,
+) -> None:
+    """Insert or update an IPTV source. Preserves enabled state on update."""
+    channels_json = json.dumps(channels)
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO iptv_sources (name, url, channels, epg_url, enabled)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+                url      = excluded.url,
+                channels = excluded.channels,
+                epg_url  = COALESCE(excluded.epg_url, iptv_sources.epg_url)
+            """,
+            (name, url, channels_json, epg_url, 1 if enabled else 0),
+        )
+
+
+def update_iptv_source_epg(name: str, epg_url: str) -> None:
+    """Update the epg_url for an existing source."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE iptv_sources SET epg_url = ? WHERE name = ?",
+            (epg_url, name),
+        )
+
+
+def set_iptv_source_enabled(name: str, enabled: bool) -> bool:
+    """Toggle enabled state for a source. Returns True if the row was found."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE iptv_sources SET enabled = ? WHERE name = ?",
+            (1 if enabled else 0, name),
+        )
+        return cursor.rowcount > 0
+
+
+def delete_iptv_source(name: str) -> bool:
+    """Delete a source by name. Returns True if it existed."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM iptv_sources WHERE name = ?", (name,))
+        return cursor.rowcount > 0
+
+
+def get_tvh_enabled() -> bool:
+    """Get the global tvh_enabled flag (stored in settings)."""
+    val = get_setting("tvh_enabled")
+    return val != "0"
+
+
+def set_tvh_enabled(enabled: bool) -> None:
+    """Set the global tvh_enabled flag."""
+    update_setting("tvh_enabled", "1" if enabled else "0")
 
 
 # Initialize on module import
