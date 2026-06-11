@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Loader2, Tv, Bookmark, PlayCircle, Volume2, Play, Star, Film, Music, Book, Clock } from 'lucide-react'
 import { Button } from '../components/ui/button'
+import { LazyChannelImage } from '../components/LazyChannelImage'
 import { useApi } from '../hooks/useApi'
 import { useAuth } from '../context/AuthContext'
 import { useGuild } from '../contexts/GuildContext'
@@ -214,6 +215,44 @@ export function Dashboard() {
     )
   }
 
+  const renderIptvRows = (items: FeaturedItem[]) => {
+    const canPlay = !!selectedGuild && !!selectedVoiceChannel
+    return (
+      <div className="divide-y divide-white/5">
+        {items.map(fi => {
+          const m = fi.metadata
+          const name = fi.item_id
+          return (
+            <div key={name} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+              <LazyChannelImage src={m?.logo_url} alt={m?.name ?? name} className="w-10 h-10 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-slate-200 font-medium truncate">{m?.name ?? name}</p>
+                {m?.group && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-slate-300">{m.group}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Button variant="ghost" size="sm"
+                  onClick={() => canPlay && handlePlay('tv', name)}
+                  disabled={!canPlay}
+                  className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+                  title={!selectedGuild ? 'Select a guild first' : !selectedVoiceChannel ? 'Select a voice channel first' : 'Play'}>
+                  <Play className="h-4 w-4" />
+                </Button>
+                {isAdmin && (
+                  <button onClick={() => handleUnfeature('iptv', name)}
+                    className="p-1.5 rounded-lg text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10 transition-colors" title="Remove from featured">
+                    <Star className="w-4 h-4 fill-current" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
   const renderBookmarkRows = (items: FeaturedItem[]) => {
     return (
       <div className="divide-y divide-white/5">
@@ -297,30 +336,9 @@ export function Dashboard() {
                 renderJellyfinRows(items)
               ) : section.key === 'bookmarks' ? (
                 renderBookmarkRows(items)
-              ) : (
-                <div className="divide-y divide-white/5">
-                  {items.map(fi => (
-                    <div key={fi.item_id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
-                      <p className="text-slate-200 font-medium truncate flex-1 mr-4">{fi.item_id}</p>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <Button variant="ghost" size="sm"
-                          onClick={() => handlePlay(section.command, fi.item_id)}
-                          disabled={!selectedGuild || !selectedVoiceChannel}
-                          className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
-                          title={!selectedGuild ? 'Select a guild first' : !selectedVoiceChannel ? 'Select a voice channel first' : 'Play'}>
-                          <Play className="h-4 w-4" />
-                        </Button>
-                        {isAdmin && (
-                          <button onClick={() => handleUnfeature(section.category, fi.item_id)}
-                            className="p-1.5 rounded-lg text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10 transition-colors" title="Remove from featured">
-                            <Star className="w-4 h-4 fill-current" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              ) : section.key === 'iptv' ? (
+                renderIptvRows(items)
+              ) : null}
             </div>
           )
         })

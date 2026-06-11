@@ -61,13 +61,14 @@ export function Iptv() {
     setChannels([])
   }
 
-  const handleToggleFeatured = async (channelName: string) => {
-    const result = await api.toggleFeatured('iptv', channelName)
+  const handleToggleFeatured = async (ch: IptvChannel) => {
+    const metadata = { name: ch.name, logo_url: ch.logo_url ?? null, group: ch.group ?? null }
+    const result = await api.toggleFeatured('iptv', ch.name, metadata)
     if (result !== null) {
       setFeaturedIds(prev => {
         const next = new Set(prev)
-        if (result.featured) next.add(channelName)
-        else next.delete(channelName)
+        if (result.featured) next.add(ch.name)
+        else next.delete(ch.name)
         return next
       })
     }
@@ -247,7 +248,7 @@ export function Iptv() {
                     <div className="flex items-center gap-1 ml-4">
                       {isAdmin && (
                         <button
-                          onClick={() => handleToggleFeatured(ch.name)}
+                          onClick={() => handleToggleFeatured(ch)}
                           className={`p-1.5 rounded-lg transition-colors ${
                             featuredIds.has(ch.name)
                               ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10'
