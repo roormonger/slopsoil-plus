@@ -295,6 +295,30 @@ async def get_jellyfin_items_endpoint(
     )
 
 
+@router.post("/by-names", response_model=list[JellyfinItemResponse])
+async def get_jellyfin_items_by_names(names: list[str]) -> list[JellyfinItemResponse]:
+    """Resolve a list of item names to full Jellyfin item objects (used by dashboard featured section)."""
+    results: list[JellyfinItemResponse] = []
+    for name in names:
+        data = await _client.get_items("all", "Name", "Ascending", name, limit=1, start_index=0)
+        for item in data["items"]:
+            if item.get("Name", "").lower() == name.lower():
+                results.append(JellyfinItemResponse(
+                    Id=item.get("Id", ""),
+                    Name=item.get("Name", ""),
+                    Type=item.get("Type", ""),
+                    ProductionYear=item.get("ProductionYear"),
+                    PremiereDate=item.get("PremiereDate"),
+                    CommunityRating=item.get("CommunityRating"),
+                    RunTimeTicks=item.get("RunTimeTicks"),
+                    Overview=item.get("Overview"),
+                    ImageTags=item.get("ImageTags"),
+                    UserData=item.get("UserData"),
+                ))
+                break
+    return results
+
+
 @router.get("/series/{series_id}/seasons", response_model=list[JellyfinItemResponse])
 async def get_jellyfin_seasons_endpoint(series_id: str) -> list[JellyfinItemResponse]:
     """Get all seasons for a TV series."""

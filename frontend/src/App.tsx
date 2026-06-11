@@ -13,7 +13,7 @@ import { Bookmarks } from './pages/Bookmarks'
 import { Settings } from './pages/Settings'
 import { Soundboard } from './pages/Soundboard'
 import { SoundboardManager } from './pages/SoundboardManager'
-import { Music } from './pages/Music'
+import { Audio } from './pages/Audio'
 import { Jellyfin } from './pages/Jellyfin'
 import Login from './pages/Login'
 
@@ -77,7 +77,7 @@ function AppContent() {
                 <Route path="/bookmarks" element={<Bookmarks />} />
                 <Route path="/jellyfin" element={<Jellyfin />} />
                 <Route path="/soundboard" element={<Soundboard />} />
-                <Route path="/music" element={<Music />} />
+                <Route path="/audio" element={<Audio />} />
               </Routes>
             </AuthenticatedLayout>
           </ProtectedRoute>

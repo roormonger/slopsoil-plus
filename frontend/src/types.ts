@@ -138,7 +138,7 @@ export interface CommandResult {
   message?: string
 }
 
-export type Tab = 'dashboard' | 'users' | 'iptv' | 'bookmarks' | 'soundboard' | 'music' | 'settings'
+export type Tab = 'dashboard' | 'users' | 'iptv' | 'bookmarks' | 'soundboard' | 'audio' | 'settings'
 
 export interface MusicTrack {
   url: string
@@ -157,6 +157,15 @@ export interface MusicStatus {
   is_playing: boolean
   is_paused: boolean
 }
+
+export interface FeaturedSettings {
+  iptv: boolean
+  bookmarks: boolean
+  jellyfin: boolean
+  soundboard: boolean
+}
+
+export type FeaturedCategory = 'iptv' | 'bookmark' | 'jellyfin' | 'soundboard'
 
 export type JellyfinItemType = 'Movie' | 'Series' | 'Episode' | 'MusicAlbum' | 'MusicArtist' | 'Book'
 

@@ -3,6 +3,7 @@ import { PlayCircle, Film, Tv, Music, Book, Search, Clock, Star, Play, Plus, Boo
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useApi } from '../hooks/useApi'
+import { useAuth } from '../context/AuthContext'
 import { useGuild } from '../contexts/GuildContext'
 import type { JellyfinItem, JellyfinLibrary, JellyfinItemType } from '../types'
 
@@ -34,7 +35,10 @@ interface TvDrillState {
 
 export function Jellyfin() {
   const api = useApi()
+  const { user } = useAuth()
   const { selectedGuild, selectedVoiceChannel } = useGuild()
+  const isAdmin = user?.role === 'admin'
+  const [featuredIds, setFeaturedIds] = useState<Set<string>>(new Set())
   const [libraries, setLibraries] = useState<JellyfinLibrary[]>([])
   const [selectedLibrary, setSelectedLibrary] = useState<string>('')
   const [items, setItems] = useState<JellyfinItem[]>([])
@@ -67,14 +71,30 @@ export function Jellyfin() {
 
   useEffect(() => {
     const loadConfig = async () => {
-      const configData = await api.fetchConfig()
+      const [configData, featuredData] = await Promise.all([
+        api.fetchConfig(),
+        api.fetchFeatured('jellyfin'),
+      ])
       if (configData) {
         setConfig(configData.settings)
         setLoading(false)
       }
+      if (featuredData) setFeaturedIds(new Set(featuredData.items))
     }
     loadConfig()
   }, [])
+
+  const handleToggleFeatured = async (itemName: string) => {
+    const result = await api.toggleFeatured('jellyfin', itemName)
+    if (result !== null) {
+      setFeaturedIds(prev => {
+        const next = new Set(prev)
+        if (result.featured) next.add(itemName)
+        else next.delete(itemName)
+        return next
+      })
+    }
+  }
 
   useEffect(() => {
     if (!config?.jellyfin_url || !config?.jellyfin_api_key) return
@@ -226,6 +246,19 @@ export function Jellyfin() {
           {item.Overview && <p className="text-xs text-slate-500 mt-1 line-clamp-2">{item.Overview}</p>}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          {isAdmin && (
+            <button
+              onClick={() => handleToggleFeatured(item.Name)}
+              className={`p-1.5 rounded-lg transition-colors ${
+                featuredIds.has(item.Name)
+                  ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10'
+                  : 'text-slate-500 hover:text-yellow-400 hover:bg-yellow-500/10'
+              }`}
+              title={featuredIds.has(item.Name) ? 'Remove from featured' : 'Add to featured'}
+            >
+              <Star className={`w-4 h-4 ${featuredIds.has(item.Name) ? 'fill-current' : ''}`} />
+            </button>
+          )}
           <Button size="sm" onClick={() => handlePlayItem(item)} className="bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 h-8 w-8 p-0" title="Play">
             <Play className="w-3 h-3" />
           </Button>

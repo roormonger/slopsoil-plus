@@ -178,6 +178,17 @@ def init_database() -> None:
             )
         """)
 
+        # Featured items table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS featured_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT NOT NULL,
+                item_id TEXT NOT NULL,
+                added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(category, item_id)
+            )
+        """)
+
         # Pre-seed default settings if they don't exist
         for key, value in DEFAULT_SETTINGS.items():
             cursor.execute(
@@ -529,6 +540,64 @@ def update_user_bookmarks(user_id: str, bookmarks_type: str, bookmarks: list) ->
 
     return update_user(user_id, **{column_name: bookmarks_json})
 
+
+
+FEATURED_CATEGORIES = {"iptv", "bookmark", "jellyfin", "soundboard"}
+
+
+def get_featured(category: str) -> list[str]:
+    """Return all featured item_ids for a category."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT item_id FROM featured_items WHERE category = ? ORDER BY added_at",
+            (category,),
+        )
+        return [row["item_id"] for row in cursor.fetchall()]
+
+
+def is_featured(category: str, item_id: str) -> bool:
+    """Check if a specific item is featured."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT 1 FROM featured_items WHERE category = ? AND item_id = ?",
+            (category, item_id),
+        )
+        return cursor.fetchone() is not None
+
+
+def set_featured(category: str, item_id: str) -> None:
+    """Mark an item as featured (idempotent)."""
+    if category not in FEATURED_CATEGORIES:
+        raise ValueError(f"Unknown category: {category}")
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR IGNORE INTO featured_items (category, item_id) VALUES (?, ?)",
+            (category, item_id),
+        )
+
+
+def unset_featured(category: str, item_id: str) -> bool:
+    """Remove an item from featured. Returns True if it was featured."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM featured_items WHERE category = ? AND item_id = ?",
+            (category, item_id),
+        )
+        return cursor.rowcount > 0
+
+
+def toggle_featured(category: str, item_id: str) -> bool:
+    """Toggle featured state. Returns True if now featured, False if unfeatured."""
+    if is_featured(category, item_id):
+        unset_featured(category, item_id)
+        return False
+    else:
+        set_featured(category, item_id)
+        return True
 
 
 # Initialize on module import

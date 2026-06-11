@@ -125,14 +125,16 @@ _shutdown_event = asyncio.Event()
 
 async def start_web_server() -> None:
     """Start the FastAPI/uvicorn server."""
+    dev_mode = os.environ.get("DEV", "").lower() in ("1", "true", "yes")
     config = uvicorn.Config(
-        app,
+        "backend.main:app",
         host="0.0.0.0",
         port=PORT,
         log_level="info",
+        reload=dev_mode,
     )
     server = uvicorn.Server(config)
-    log.info("Starting web server on port %d", PORT)
+    log.info("Starting web server on port %d (reload=%s)", PORT, dev_mode)
 
     # Run server until shutdown signal received
     await server.serve()

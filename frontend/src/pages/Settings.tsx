@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Loader2, Eye, EyeOff, Lock, Zap } from 'lucide-react'
+import { Loader2, Eye, EyeOff, Lock, Zap, Star } from 'lucide-react'
 import type { BotStatus } from '../types'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -36,6 +36,8 @@ const NITRO_LIMITS: Record<number, { quality: string; fps: number; resolution: s
 
 export function Settings() {
   const api = useApi()
+  const [featuredSettings, setFeaturedSettings] = useState({ iptv: true, bookmarks: true, jellyfin: true, soundboard: true })
+  const [savingFeatured, setSavingFeatured] = useState(false)
   const [config, setConfig] = useState<Config>({
     discord_token: '',
     discord_avatar_url: '',
@@ -71,6 +73,14 @@ export function Settings() {
     return result
   }
 
+  const handleToggleFeaturedSection = async (key: 'iptv' | 'bookmarks' | 'jellyfin' | 'soundboard') => {
+    const newValue = !featuredSettings[key]
+    setSavingFeatured(true)
+    const ok = await api.updateFeaturedSettings({ [key]: newValue })
+    if (ok) setFeaturedSettings(prev => ({ ...prev, [key]: newValue }))
+    setSavingFeatured(false)
+  }
+
   useEffect(() => {
     const loadData = async () => {
       const [data, status] = await Promise.all([api.fetchConfig(), api.fetchStatus()])
@@ -82,6 +92,8 @@ export function Settings() {
         console.log('settingsEnv set to:', data.settingsEnv)
         console.log('jellyfin_url from_env:', data.settingsEnv['jellyfin_url']?.from_env)
       }
+      const fs = await api.fetchFeaturedSettings()
+      if (fs) setFeaturedSettings(fs)
       setLoading(false)
     }
     loadData()
@@ -571,6 +583,36 @@ export function Settings() {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Featured Sections */}
+      <div className="glass-card rounded-2xl p-6 space-y-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Star className="w-5 h-5 text-primary" />
+          <div>
+            <h3 className="text-xl font-semibold text-slate-200">Featured Sections</h3>
+            <p className="text-sm text-slate-400">Choose which categories appear on the Dashboard</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {(['iptv', 'bookmarks', 'jellyfin', 'soundboard'] as const).map(key => (
+            <button
+              key={key}
+              onClick={() => handleToggleFeaturedSection(key)}
+              disabled={savingFeatured}
+              className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                featuredSettings[key]
+                  ? 'bg-primary/10 border-primary/40 text-primary'
+                  : 'glass-light border-white/10 text-slate-400 hover:border-white/20'
+              }`}
+            >
+              <span className="text-sm font-medium capitalize">{key === 'iptv' ? 'IPTV' : key}</span>
+              <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${
+                featuredSettings[key] ? 'bg-primary border-primary' : 'border-slate-500'
+              }`} />
+            </button>
+          ))}
         </div>
       </div>
 

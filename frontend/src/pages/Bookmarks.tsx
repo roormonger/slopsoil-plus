@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react'
-import { Loader2, Play, Trash2 } from 'lucide-react'
+import { Loader2, Play, Trash2, Star } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useApi } from '../hooks/useApi'
+import { useAuth } from '../context/AuthContext'
 import { useGuild } from '../contexts/GuildContext'
 import type { Bookmark } from '../types'
 
 export function Bookmarks() {
   const api = useApi()
+  const { user } = useAuth()
   const { selectedGuild, selectedVoiceChannel } = useGuild()
+  const isAdmin = user?.role === 'admin'
+  const [featuredIds, setFeaturedIds] = useState<Set<string>>(new Set())
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -26,10 +30,24 @@ export function Bookmarks() {
   useEffect(() => {
     const init = async () => {
       await loadBookmarks()
+      const featuredData = await api.fetchFeatured('bookmark')
+      if (featuredData) setFeaturedIds(new Set(featuredData.items))
       setLoading(false)
     }
     init()
   }, [])
+
+  const handleToggleFeatured = async (name: string) => {
+    const result = await api.toggleFeatured('bookmark', name)
+    if (result !== null) {
+      setFeaturedIds(prev => {
+        const next = new Set(prev)
+        if (result.featured) next.add(name)
+        else next.delete(name)
+        return next
+      })
+    }
+  }
 
   const handlePlay = async (url: string) => {
     if (!selectedGuild) {
@@ -128,7 +146,20 @@ export function Bookmarks() {
                   <p className="font-medium text-slate-200">{bm.name}</p>
                   <p className="text-sm text-slate-400 truncate">{bm.url}</p>
                 </div>
-                <div className="flex items-center gap-3 ml-4">
+                <div className="flex items-center gap-2 ml-4">
+                  {isAdmin && (
+                    <button
+                      onClick={() => handleToggleFeatured(bm.name)}
+                      className={`p-1.5 rounded-lg transition-colors ${
+                        featuredIds.has(bm.name)
+                          ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10'
+                          : 'text-slate-500 hover:text-yellow-400 hover:bg-yellow-500/10'
+                      }`}
+                      title={featuredIds.has(bm.name) ? 'Remove from featured' : 'Add to featured'}
+                    >
+                      <Star className={`w-4 h-4 ${featuredIds.has(bm.name) ? 'fill-current' : ''}`} />
+                    </button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"

@@ -301,49 +301,49 @@ export function useApi() {
     }
   }, [])
 
-  // Music API methods
+  // Audio API methods
   const fetchMusicStatus = useCallback(async (): Promise<MusicStatus | null> => {
     try {
-      const res = await fetch(`${API_URL}/music/status`)
-      if (!res.ok) throw new Error('Failed to fetch music status')
+      const res = await fetch(`${API_URL}/audio/status`)
+      if (!res.ok) throw new Error('Failed to fetch audio status')
       return await res.json()
     } catch (err) {
-      showMessage(err instanceof Error ? err.message : 'Failed to load music status')
+      showMessage(err instanceof Error ? err.message : 'Failed to load audio status')
       return null
     }
   }, [showMessage])
 
   const playMusic = useCallback(async (guildId: string, query: string, channelId: string = ''): Promise<{ success: boolean; message: string } | null> => {
     try {
-      const res = await fetch(`${API_URL}/music/play`, {
+      const res = await fetch(`${API_URL}/audio/play`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ guild_id: guildId, query, channel_id: channelId || undefined }),
       })
       return await res.json()
     } catch (err) {
-      showMessage(err instanceof Error ? err.message : 'Failed to play music')
+      showMessage(err instanceof Error ? err.message : 'Failed to play audio')
       return null
     }
   }, [showMessage])
 
   const controlMusic = useCallback(async (guildId: string, action: 'stop' | 'skip' | 'back' | 'pause' | 'resume', channelId: string = ''): Promise<{ success: boolean; message: string } | null> => {
     try {
-      const res = await fetch(`${API_URL}/music/control`, {
+      const res = await fetch(`${API_URL}/audio/control`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ guild_id: guildId, action, channel_id: channelId || undefined }),
       })
       return await res.json()
     } catch (err) {
-      showMessage(err instanceof Error ? err.message : 'Failed to control music')
+      showMessage(err instanceof Error ? err.message : 'Failed to control audio')
       return null
     }
   }, [showMessage])
 
   const setMusicVolume = useCallback(async (guildId: string, volume: number, channelId: string = ''): Promise<{ success: boolean; message: string } | null> => {
     try {
-      const res = await fetch(`${API_URL}/music/volume`, {
+      const res = await fetch(`${API_URL}/audio/volume`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ guild_id: guildId, volume, channel_id: channelId || undefined }),
@@ -352,6 +352,65 @@ export function useApi() {
     } catch (err) {
       showMessage(err instanceof Error ? err.message : 'Failed to set volume')
       return null
+    }
+  }, [showMessage])
+
+  // Featured API methods
+  const fetchFeatured = useCallback(async (category: string): Promise<{ items: string[]; enabled: boolean } | null> => {
+    try {
+      const res = await fetch(`${API_URL}/featured/${category}`)
+      if (!res.ok) throw new Error('Failed to fetch featured items')
+      return await res.json()
+    } catch (err) {
+      return null
+    }
+  }, [])
+
+  const toggleFeatured = useCallback(async (category: string, itemId: string): Promise<{ featured: boolean } | null> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const res = await fetch(`${API_URL}/featured/${category}/toggle`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ item_id: itemId }),
+      })
+      if (!res.ok) throw new Error('Failed to toggle featured')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to toggle featured')
+      return null
+    }
+  }, [showMessage])
+
+  const fetchFeaturedSettings = useCallback(async (): Promise<{ iptv: boolean; bookmarks: boolean; jellyfin: boolean; soundboard: boolean } | null> => {
+    try {
+      const res = await fetch(`${API_URL}/featured/settings/all`)
+      if (!res.ok) throw new Error('Failed to fetch featured settings')
+      return await res.json()
+    } catch (err) {
+      return null
+    }
+  }, [])
+
+  const updateFeaturedSettings = useCallback(async (settings: Partial<{ iptv: boolean; bookmarks: boolean; jellyfin: boolean; soundboard: boolean }>): Promise<boolean> => {
+    try {
+      const token = localStorage.getItem('slopsoil_token')
+      const res = await fetch(`${API_URL}/featured/settings/all`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(settings),
+      })
+      if (!res.ok) throw new Error('Failed to update featured settings')
+      return true
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to update featured settings')
+      return false
     }
   }, [showMessage])
 
@@ -389,6 +448,21 @@ export function useApi() {
       return await res.json()
     } catch (err) {
       showMessage(err instanceof Error ? err.message : 'Failed to fetch Jellyfin items')
+      return null
+    }
+  }, [showMessage])
+
+  const fetchJellyfinByNames = useCallback(async (names: string[]): Promise<any[] | null> => {
+    try {
+      const res = await fetch(`${API_URL}/jellyfin/by-names`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(names),
+      })
+      if (!res.ok) throw new Error('Failed to fetch Jellyfin items by names')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to fetch Jellyfin items by names')
       return null
     }
   }, [showMessage])
@@ -856,6 +930,7 @@ export function useApi() {
     fetchJellyfinItems,
     fetchJellyfinSeasons,
     fetchJellyfinEpisodes,
+    fetchJellyfinByNames,
     get,
     post,
     delete: deleteRequest,
@@ -882,5 +957,9 @@ export function useApi() {
     renameSystemSound,
     updateUserSoundCover,
     renameUserSound,
+    fetchFeatured,
+    toggleFeatured,
+    fetchFeaturedSettings,
+    updateFeaturedSettings,
   }
 }

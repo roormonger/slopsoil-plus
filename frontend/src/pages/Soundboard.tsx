@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Volume2, Trash2, Upload, AlertCircle, Search, Plus, X, MoreVertical, Pencil, ImagePlus } from 'lucide-react'
+import { Volume2, Trash2, Upload, AlertCircle, Search, Plus, X, MoreVertical, Pencil, ImagePlus, Star } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
 import { useAuth } from '../context/AuthContext'
 import { useGuild } from '../contexts/GuildContext'
@@ -47,19 +47,35 @@ export function Soundboard() {
   const filteredSystemSounds = filterSounds(systemSounds, searchQuery)
   const filteredPersonalSounds = filterSounds(personalSounds, searchQuery)
 
+  const [featuredIds, setFeaturedIds] = useState<Set<string>>(new Set())
+
+  const handleToggleFeatured = async (filename: string) => {
+    const result = await api.toggleFeatured('soundboard', filename)
+    if (result !== null) {
+      setFeaturedIds(prev => {
+        const next = new Set(prev)
+        if (result.featured) next.add(filename)
+        else next.delete(filename)
+        return next
+      })
+    }
+  }
+
   useEffect(() => {
     const load = async () => {
       setLoading(true)
-      const [system, personal, config] = await Promise.all([
+      const [system, personal, config, featuredData] = await Promise.all([
         api.fetchSystemSounds(),
         api.fetchMySounds(),
         api.fetchConfig(),
+        api.fetchFeatured('soundboard'),
       ])
       if (system) setSystemSounds(system)
       if (personal) setPersonalSounds(personal)
       if (config?.settings?.soundboard_user_quota) {
         setQuota(Number(config.settings.soundboard_user_quota) || 10)
       }
+      if (featuredData) setFeaturedIds(new Set(featuredData.items))
       setLoading(false)
     }
     load()
@@ -243,6 +259,21 @@ export function Soundboard() {
                 </div>
               )}
             </div>
+
+            {/* Featured star (admin only, system sounds only) */}
+            {isAdmin && type === 'system' && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleToggleFeatured(sound.filename) }}
+                className={`shrink-0 p-1 rounded transition-colors ${
+                  featuredIds.has(sound.filename)
+                    ? 'text-yellow-400 hover:text-yellow-300'
+                    : 'text-slate-600 hover:text-yellow-400'
+                }`}
+                title={featuredIds.has(sound.filename) ? 'Remove from featured' : 'Add to featured'}
+              >
+                <Star className={`w-3.5 h-3.5 ${featuredIds.has(sound.filename) ? 'fill-current' : ''}`} />
+              </button>
+            )}
 
             {/* Ellipsis menu (personal only) */}
             {type === 'personal' && (

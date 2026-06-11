@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react'
-import { Loader2, Trash2, Play, ArrowLeft } from 'lucide-react'
+import { Loader2, Trash2, Play, ArrowLeft, Star } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useApi } from '../hooks/useApi'
+import { useAuth } from '../context/AuthContext'
 import { useGuild } from '../contexts/GuildContext'
 import type { IptvSource, IptvChannel } from '../types'
 
 export function Iptv() {
   const api = useApi()
+  const { user } = useAuth()
   const { selectedGuild, selectedVoiceChannel } = useGuild()
+  const isAdmin = user?.role === 'admin'
+  const [featuredIds, setFeaturedIds] = useState<Set<string>>(new Set())
   const [sources, setSources] = useState<IptvSource[]>([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<'list' | 'channels'>('list')
@@ -30,6 +34,8 @@ export function Iptv() {
   useEffect(() => {
     const init = async () => {
       await loadSources()
+      const featuredData = await api.fetchFeatured('iptv')
+      if (featuredData) setFeaturedIds(new Set(featuredData.items))
       setLoading(false)
     }
     init()
@@ -48,6 +54,18 @@ export function Iptv() {
     setView('list')
     setSelectedSource('')
     setChannels([])
+  }
+
+  const handleToggleFeatured = async (channelName: string) => {
+    const result = await api.toggleFeatured('iptv', channelName)
+    if (result !== null) {
+      setFeaturedIds(prev => {
+        const next = new Set(prev)
+        if (result.featured) next.add(channelName)
+        else next.delete(channelName)
+        return next
+      })
+    }
   }
 
   const handlePlay = async (channelName: string) => {
@@ -218,20 +236,35 @@ export function Iptv() {
                         )}
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handlePlay(ch.name)}
-                      disabled={!selectedGuild || !selectedVoiceChannel}
-                      className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 ml-4"
-                      title={
-                        !selectedGuild ? 'Select a guild first' :
-                        !selectedVoiceChannel ? 'Select a voice channel first' :
-                        'Play'
-                      }
-                    >
-                      <Play className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1 ml-4">
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleToggleFeatured(ch.name)}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            featuredIds.has(ch.name)
+                              ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10'
+                              : 'text-slate-500 hover:text-yellow-400 hover:bg-yellow-500/10'
+                          }`}
+                          title={featuredIds.has(ch.name) ? 'Remove from featured' : 'Add to featured'}
+                        >
+                          <Star className={`w-4 h-4 ${featuredIds.has(ch.name) ? 'fill-current' : ''}`} />
+                        </button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handlePlay(ch.name)}
+                        disabled={!selectedGuild || !selectedVoiceChannel}
+                        className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+                        title={
+                          !selectedGuild ? 'Select a guild first' :
+                          !selectedVoiceChannel ? 'Select a voice channel first' :
+                          'Play'
+                        }
+                      >
+                        <Play className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 ))
               )}
