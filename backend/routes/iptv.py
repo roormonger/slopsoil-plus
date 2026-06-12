@@ -8,7 +8,7 @@ import logging
 import urllib.request
 from typing import Any
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -103,7 +103,7 @@ async def add_iptv_source(request: IPTVSourceAddRequest) -> dict[str, Any]:
 
 @router.post("/sources/upload")
 async def upload_iptv_source(
-    name: str = Field(..., min_length=1),
+    name: str = Form(..., min_length=1),
     file: UploadFile = File(...),
 ) -> dict[str, Any]:
     """Upload and parse an M3U playlist file."""

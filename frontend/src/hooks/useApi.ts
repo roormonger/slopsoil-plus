@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import type { Config, User, BotStatus, NowPlaying, IptvSource, IptvChannel, Bookmark, Sound, Guild, VoiceChannel, VoiceStatus, CommandResult, MusicStatus, FeaturedItem } from '../types'
+import type { Config, User, BotStatus, NowPlaying, IptvSource, IptvChannel, Bookmark, Sound, Guild, VoiceChannel, VoiceStatus, CommandResult, MusicStatus, FeaturedItem, TrackMeta } from '../types'
 
 const API_URL = '/api'
 
@@ -186,6 +186,26 @@ export function useApi() {
       return false
     }
   }, [showMessage])
+
+  const fetchYoutubeFeed = useCallback(async (limit = 20): Promise<TrackMeta[] | null> => {
+    try {
+      const res = await fetch(`${API_URL}/music/feed?limit=${limit}`)
+      if (!res.ok) throw new Error('Failed to fetch feed')
+      return await res.json()
+    } catch {
+      return null
+    }
+  }, [])
+
+  const searchYoutube = useCallback(async (q: string, limit = 10): Promise<TrackMeta[] | null> => {
+    try {
+      const res = await fetch(`${API_URL}/music/search?q=${encodeURIComponent(q)}&limit=${limit}`)
+      if (!res.ok) throw new Error('Failed to search')
+      return await res.json()
+    } catch {
+      return null
+    }
+  }, [])
 
   const fetchIptvSources = useCallback(async (): Promise<IptvSource[] | null> => {
     try {
@@ -980,5 +1000,7 @@ export function useApi() {
     toggleFeatured,
     fetchFeaturedSettings,
     updateFeaturedSettings,
+    fetchYoutubeFeed,
+    searchYoutube,
   }
 }

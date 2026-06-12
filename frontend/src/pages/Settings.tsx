@@ -66,6 +66,8 @@ export function Settings() {
     stream_packet_pace: 0,
     stream_av_sync_ms: 0,
     soundboard_user_quota: 10,
+    audio_genres: '[]',
+    audio_playlists: '[]',
   })
   const [settingsEnv, setSettingsEnv] = useState<Record<string, {value: string, from_env: boolean}>>({})
   const [showToken, setShowToken] = useState(false)
@@ -74,6 +76,42 @@ export function Settings() {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [botStatus, setBotStatus] = useState<BotStatus | null>(null)
+
+  // Audio genres/playlists state
+  const [audioGenreInput, setAudioGenreInput] = useState('')
+  const [audioPlaylistInput, setAudioPlaylistInput] = useState('')
+  const [savingAudio, setSavingAudio] = useState(false)
+
+  const audioGenres: string[] = (() => { try { return JSON.parse(config.audio_genres || '[]') } catch { return [] } })()
+  const audioPlaylists: string[] = (() => { try { return JSON.parse(config.audio_playlists || '[]') } catch { return [] } })()
+
+  const addAudioGenre = () => {
+    const g = audioGenreInput.trim()
+    if (!g || audioGenres.includes(g)) return
+    setConfig(prev => ({ ...prev, audio_genres: JSON.stringify([...audioGenres, g]) }))
+    setAudioGenreInput('')
+  }
+
+  const removeAudioGenre = (g: string) => {
+    setConfig(prev => ({ ...prev, audio_genres: JSON.stringify(audioGenres.filter(x => x !== g)) }))
+  }
+
+  const addAudioPlaylist = () => {
+    const p = audioPlaylistInput.trim()
+    if (!p || audioPlaylists.includes(p)) return
+    setConfig(prev => ({ ...prev, audio_playlists: JSON.stringify([...audioPlaylists, p]) }))
+    setAudioPlaylistInput('')
+  }
+
+  const removeAudioPlaylist = (p: string) => {
+    setConfig(prev => ({ ...prev, audio_playlists: JSON.stringify(audioPlaylists.filter(x => x !== p)) }))
+  }
+
+  const handleSaveAudio = async () => {
+    setSavingAudio(true)
+    await api.saveConfig(config)
+    setSavingAudio(false)
+  }
 
   // IPTV Playlists state
   const [iptvSources, setIptvSources] = useState<IptvSource[]>([])
@@ -458,7 +496,7 @@ export function Settings() {
       {/* Sources Tab */}
       {activeTab === 'sources' && (
         <div className="space-y-6">
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             <div className="glass-card rounded-2xl p-6 space-y-6 h-[380px]">
               <div>
                 <h3 className="text-xl font-semibold text-slate-200 mb-1">TVheadend</h3>
@@ -658,7 +696,85 @@ export function Settings() {
               )}
             </div>
           </div>
-        </div>
+
+            {/* Local Sources */}
+            <div className="glass-card rounded-2xl p-6 space-y-4 h-[380px] flex flex-col">
+              <div className="shrink-0">
+                <h3 className="text-xl font-semibold text-slate-200 mb-1">Local Sources</h3>
+                <p className="text-sm text-slate-400">Local media directories</p>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto flex items-center justify-center">
+                <p className="text-slate-500 text-sm">Coming soon</p>
+              </div>
+            </div>
+
+            {/* Audio Settings */}
+            <div className="glass-card rounded-2xl p-6 space-y-4 h-[380px] flex flex-col">
+              <div className="shrink-0">
+                <h3 className="text-xl font-semibold text-slate-200 mb-1">Audio</h3>
+                <p className="text-sm text-slate-400">YouTube idle feed — genres &amp; playlists</p>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
+                {/* Genres */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-400">Genres</label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={audioGenreInput}
+                      onChange={(e) => setAudioGenreInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addAudioGenre()}
+                      placeholder="e.g. lo-fi, jazz"
+                      className="glass-input text-slate-200 h-9 text-sm"
+                    />
+                    <Button onClick={addAudioGenre} className="bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 h-9 px-3 shrink-0">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {audioGenres.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {audioGenres.map(g => (
+                        <span key={g} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/20 text-primary text-xs">
+                          {g}
+                          <button onClick={() => removeAudioGenre(g)} className="hover:text-red-400 transition-colors">&times;</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* Playlists */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-400">Playlist URLs</label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={audioPlaylistInput}
+                      onChange={(e) => setAudioPlaylistInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addAudioPlaylist()}
+                      placeholder="https://youtube.com/playlist?list=…"
+                      className="glass-input text-slate-200 h-9 text-sm"
+                    />
+                    <Button onClick={addAudioPlaylist} className="bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 h-9 px-3 shrink-0">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {audioPlaylists.length > 0 && (
+                    <div className="space-y-1">
+                      {audioPlaylists.map(p => (
+                        <div key={p} className="flex items-center justify-between p-2 rounded-lg glass-light border-white/5 gap-2">
+                          <span className="text-xs text-slate-300 truncate min-w-0">{p}</span>
+                          <button onClick={() => removeAudioPlaylist(p)} className="text-red-400 hover:text-red-300 shrink-0 text-sm">&times;</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="shrink-0 pt-2">
+                <Button onClick={handleSaveAudio} disabled={savingAudio} className="w-full bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30">
+                  {savingAudio ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                </Button>
+              </div>
+            </div>
+          </div>
 
           {/* Add Source Modal */}
           {showIptvModal && (

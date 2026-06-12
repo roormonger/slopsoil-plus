@@ -21,6 +21,17 @@ export interface Config {
   stream_packet_pace: number
   stream_av_sync_ms: number
   soundboard_user_quota: number
+  audio_genres: string
+  audio_playlists: string
+}
+
+export interface TrackMeta {
+  id: string
+  title: string
+  uploader: string
+  duration: number
+  thumbnail: string
+  webpage_url: string
 }
 
 export interface Sound {

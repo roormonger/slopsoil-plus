@@ -3,10 +3,12 @@
 Handles music playback, queue management, and volume control.
 """
 
+import asyncio
 import logging
+import random
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from backend.bot_runner import execute_bot_command
@@ -147,6 +149,130 @@ async def control_music_endpoint(request: MusicControlRequest) -> MusicActionRes
     """Control music playback (stop, skip, back, pause, resume)."""
     result = await execute_bot_command(request.guild_id, f"music {request.action}", "", channel_id=request.channel_id)
     return MusicActionResponse(**result)
+
+
+class TrackMeta(BaseModel):
+    """Lightweight track metadata for browse/search results."""
+    id: str
+    title: str
+    uploader: str
+    duration: int
+    thumbnail: str
+    webpage_url: str
+
+
+def _flat_entry_to_meta(entry: dict) -> TrackMeta | None:
+    """Convert a yt-dlp flat entry to TrackMeta."""
+    vid_id = entry.get("id") or entry.get("url", "")
+    if not vid_id:
+        return None
+    webpage_url = entry.get("webpage_url") or f"https://www.youtube.com/watch?v={vid_id}"
+    thumbnail = (
+        entry.get("thumbnail")
+        or (entry.get("thumbnails") or [{}])[-1].get("url", "")
+        or f"https://i.ytimg.com/vi/{vid_id}/mqdefault.jpg"
+    )
+    return TrackMeta(
+        id=vid_id,
+        title=entry.get("title") or "Unknown",
+        uploader=entry.get("uploader") or entry.get("channel") or "",
+        duration=int(entry.get("duration") or 0),
+        thumbnail=thumbnail,
+        webpage_url=webpage_url,
+    )
+
+
+async def _yt_flat(search_url: str, limit: int) -> list[TrackMeta]:
+    """Run yt-dlp extract_flat in a thread and return TrackMeta list."""
+    import yt_dlp
+
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": True,
+        "playlistend": limit,
+    }
+
+    def _run() -> list[dict]:
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(search_url, download=False)
+                if not info:
+                    return []
+                if "entries" in info:
+                    return [e for e in (info["entries"] or []) if e]
+                return [info]
+        except Exception as exc:
+            log.warning("yt-dlp flat extract failed for %s: %s", search_url, exc)
+            return []
+
+    loop = asyncio.get_event_loop()
+    entries = await loop.run_in_executor(None, _run)
+    results: list[TrackMeta] = []
+    for e in entries:
+        meta = _flat_entry_to_meta(e)
+        if meta:
+            results.append(meta)
+        if len(results) >= limit:
+            break
+    return results
+
+
+@router.get("/search", response_model=list[TrackMeta])
+async def search_music(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(100, ge=1, le=100),
+) -> list[TrackMeta]:
+    """Search YouTube and return flat metadata results."""
+    return await _yt_flat(f"ytsearch{limit}:{q}", limit)
+
+
+@router.get("/feed", response_model=list[TrackMeta])
+async def get_music_feed(
+    limit: int = Query(100, ge=1, le=100),
+) -> list[TrackMeta]:
+    """Return a mix of tracks from configured genres and playlists."""
+    import json
+    from backend.database import get_setting
+
+    genres: list[str] = []
+    playlists: list[str] = []
+    try:
+        genres = json.loads(get_setting("audio_genres") or "[]")
+    except Exception:
+        pass
+    try:
+        playlists = json.loads(get_setting("audio_playlists") or "[]")
+    except Exception:
+        pass
+
+    if not genres and not playlists:
+        return await _yt_flat("ytsearch20:music", limit)
+
+    tasks: list[Any] = []
+    per_source = max(3, limit // max(1, len(genres) + len(playlists)))
+
+    for genre in genres:
+        tasks.append(_yt_flat(f"ytsearch{per_source}:{genre} music", per_source))
+    for url in playlists:
+        tasks.append(_yt_flat(url, per_source))
+
+    results_nested = await asyncio.gather(*tasks, return_exceptions=True)
+    combined: list[TrackMeta] = []
+    for r in results_nested:
+        if isinstance(r, list):
+            combined.extend(r)
+
+    random.shuffle(combined)
+    seen: set[str] = set()
+    deduped: list[TrackMeta] = []
+    for t in combined:
+        if t.id not in seen:
+            seen.add(t.id)
+            deduped.append(t)
+        if len(deduped) >= limit:
+            break
+    return deduped
 
 
 @router.post("/volume", response_model=MusicActionResponse)

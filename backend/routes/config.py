@@ -40,6 +40,8 @@ class ConfigUpdateRequest(BaseModel):
     stream_video_bitrate: str | None = None
     stream_packet_pace: int | None = None
     stream_av_sync_ms: int | None = None
+    audio_genres: str | None = None
+    audio_playlists: str | None = None
 
 
 class ConfigResponse(BaseModel):
@@ -85,6 +87,8 @@ async def update_config(request: ConfigUpdateRequest) -> ConfigUpdateResponse:
         "stream_video_bitrate": request.stream_video_bitrate,
         "stream_packet_pace": str(request.stream_packet_pace) if request.stream_packet_pace is not None else None,
         "stream_av_sync_ms": str(request.stream_av_sync_ms) if request.stream_av_sync_ms is not None else None,
+        "audio_genres": request.audio_genres,
+        "audio_playlists": request.audio_playlists,
     }
 
     updated = []
