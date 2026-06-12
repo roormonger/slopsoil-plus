@@ -65,7 +65,7 @@ class _JellyfinBackendClient:
         return self._session
 
     async def _get_user_id(self, url: str, api_key: str) -> str | None:
-        """Return cached Jellyfin user_id, fetching once if needed."""
+        """Return cached Jellyfin user_id, preferring the admin user."""
         if self._user_id is not None:
             return self._user_id
         session = await self._get_session()
@@ -78,8 +78,10 @@ class _JellyfinBackendClient:
                 if not users:
                     log.error("Jellyfin returned empty user list")
                     return None
-                self._user_id = users[0]["Id"]
-                log.info("Jellyfin: cached user_id %s", self._user_id)
+                admin = next((u for u in users if u.get("Policy", {}).get("IsAdministrator")), None)
+                chosen = admin or users[0]
+                self._user_id = chosen["Id"]
+                log.info("Jellyfin: cached user_id %s (admin=%s)", self._user_id, admin is not None)
                 return self._user_id
         except Exception as exc:
             log.error("Jellyfin: failed to fetch user list: %s", exc)
@@ -104,7 +106,9 @@ class _JellyfinBackendClient:
                     log.error("Jellyfin /Views returned %s", resp.status)
                     return []
                 data = await resp.json()
-                return data.get("Items", [])
+                items = data.get("Items", [])
+                log.info("Jellyfin libraries: %s", [(i.get("Name"), i.get("CollectionType")) for i in items])
+                return items
         except Exception as exc:
             log.error("Jellyfin: get_libraries failed: %s", exc)
             return []
@@ -158,6 +162,149 @@ class _JellyfinBackendClient:
                 }
         except Exception as exc:
             log.error("Jellyfin: get_items failed: %s", exc)
+            return {"items": [], "total": 0}
+
+    async def get_all_virtual_folders(self) -> list[dict]:
+        """Return all virtual folders via /Library/VirtualFolders (admin, bypasses per-user visibility)."""
+        cfg = self._get_config()
+        if cfg is None:
+            return []
+        url, key = cfg
+        session = await self._get_session()
+        try:
+            async with session.get(
+                f"{url}/Library/VirtualFolders",
+                headers=self._headers(key),
+            ) as resp:
+                if resp.status != 200:
+                    log.error("Jellyfin /Library/VirtualFolders returned %s", resp.status)
+                    return []
+                data = await resp.json()
+                log.info("Jellyfin VirtualFolders: %s", [(i.get("Name"), i.get("CollectionType")) for i in data])
+                return data
+        except Exception as exc:
+            log.error("Jellyfin: get_all_virtual_folders failed: %s", exc)
+            return []
+
+    async def get_music_artists(self, library_id: str = "all", search: str = "", limit: int = 200, start_index: int = 0) -> dict:
+        """Return music artists using the /Artists/AlbumArtists endpoint."""
+        cfg = self._get_config()
+        if cfg is None:
+            return {"items": [], "total": 0}
+        url, key = cfg
+        self._invalidate_if_config_changed(url, key)
+        user_id = await self._get_user_id(url, key)
+        if user_id is None:
+            return {"items": [], "total": 0}
+        params: dict[str, str] = {
+            "UserId": user_id,
+            "SortBy": "Name",
+            "SortOrder": "Ascending",
+            "Recursive": "true",
+            "Fields": "ImageTags",
+            "Limit": str(limit),
+            "StartIndex": str(start_index),
+        }
+        if library_id != "all":
+            params["ParentId"] = library_id
+        if search:
+            params["SearchTerm"] = search
+        session = await self._get_session()
+        try:
+            async with session.get(
+                f"{url}/Artists/AlbumArtists",
+                headers=self._headers(key),
+                params=params,
+            ) as resp:
+                if resp.status != 200:
+                    log.error("Jellyfin /Artists/AlbumArtists returned %s", resp.status)
+                    return {"items": [], "total": 0}
+                data = await resp.json()
+                log.info("Jellyfin artists result: total=%s items=%s", data.get("TotalRecordCount"), [i.get("Name") for i in data.get("Items", [])[:5]])
+                return {
+                    "items": data.get("Items", []),
+                    "total": data.get("TotalRecordCount", 0),
+                }
+        except Exception as exc:
+            log.error("Jellyfin: get_music_artists failed: %s", exc)
+            return {"items": [], "total": 0}
+
+    async def get_albums_by_artist(self, artist_id: str, limit: int = 200, start_index: int = 0) -> dict:
+        """Return albums for a given artist using AlbumArtistIds."""
+        cfg = self._get_config()
+        if cfg is None:
+            return {"items": [], "total": 0}
+        url, key = cfg
+        self._invalidate_if_config_changed(url, key)
+        user_id = await self._get_user_id(url, key)
+        if user_id is None:
+            return {"items": [], "total": 0}
+        params: dict[str, str] = {
+            "SortBy": "ProductionYear,Name",
+            "SortOrder": "Ascending",
+            "Recursive": "true",
+            "Fields": "Overview,CommunityRating,RunTimeTicks,UserData,ImageTags",
+            "IncludeItemTypes": "MusicAlbum",
+            "AlbumArtistIds": artist_id,
+            "Limit": str(limit),
+            "StartIndex": str(start_index),
+        }
+        session = await self._get_session()
+        try:
+            async with session.get(
+                f"{url}/Users/{user_id}/Items",
+                headers=self._headers(key),
+                params=params,
+            ) as resp:
+                if resp.status != 200:
+                    log.error("Jellyfin /Items (albums) returned %s", resp.status)
+                    return {"items": [], "total": 0}
+                data = await resp.json()
+                log.info("Jellyfin albums result: status=%s total=%s items=%s", resp.status, data.get("TotalRecordCount"), [i.get("Name") for i in data.get("Items", [])[:5]])
+                return {
+                    "items": data.get("Items", []),
+                    "total": data.get("TotalRecordCount", 0),
+                }
+        except Exception as exc:
+            log.error("Jellyfin: get_albums_by_artist failed: %s", exc)
+            return {"items": [], "total": 0}
+
+    async def get_tracks_by_album(self, album_id: str, limit: int = 200, start_index: int = 0) -> dict:
+        """Return tracks for a given album using ParentId."""
+        cfg = self._get_config()
+        if cfg is None:
+            return {"items": [], "total": 0}
+        url, key = cfg
+        self._invalidate_if_config_changed(url, key)
+        user_id = await self._get_user_id(url, key)
+        if user_id is None:
+            return {"items": [], "total": 0}
+        params: dict[str, str] = {
+            "SortBy": "ParentIndexNumber,IndexNumber,SortName",
+            "SortOrder": "Ascending",
+            "Fields": "RunTimeTicks,UserData,ImageTags",
+            "IncludeItemTypes": "Audio",
+            "ParentId": album_id,
+            "Limit": str(limit),
+            "StartIndex": str(start_index),
+        }
+        session = await self._get_session()
+        try:
+            async with session.get(
+                f"{url}/Users/{user_id}/Items",
+                headers=self._headers(key),
+                params=params,
+            ) as resp:
+                if resp.status != 200:
+                    log.error("Jellyfin /Items (tracks) returned %s", resp.status)
+                    return {"items": [], "total": 0}
+                data = await resp.json()
+                return {
+                    "items": data.get("Items", []),
+                    "total": data.get("TotalRecordCount", 0),
+                }
+        except Exception as exc:
+            log.error("Jellyfin: get_tracks_by_album failed: %s", exc)
             return {"items": [], "total": 0}
 
     async def get_seasons(self, series_id: str) -> list[dict]:
@@ -291,6 +438,67 @@ async def get_jellyfin_items_endpoint(
             )
             for item in result["items"]
         ],
+        total=result["total"],
+    )
+
+
+@router.get("/music/libraries", response_model=list[JellyfinLibraryResponse])
+async def get_jellyfin_music_libraries() -> list[JellyfinLibraryResponse]:
+    """Get only music collection libraries from Jellyfin via VirtualFolders (bypasses per-user visibility)."""
+    items = await _client.get_all_virtual_folders()
+    log.info("VirtualFolders: %s", [(i.get("Name"), i.get("CollectionType")) for i in items])
+    music = [i for i in items if (i.get("CollectionType") or "").lower() == "music"]
+    log.info("Filtered music libraries: %s", [i.get("Name") for i in music])
+    return [
+        JellyfinLibraryResponse(
+            Name=item.get("Name", ""),
+            Id=item.get("ItemId", item.get("Id", "")),
+            Type=item.get("Type", ""),
+            CollectionType=item.get("CollectionType", ""),
+        )
+        for item in music
+    ]
+
+
+@router.get("/music/artists", response_model=JellyfinItemsResponse)
+async def get_jellyfin_music_artists(
+    library_id: str = "all",
+    search: str = "",
+    limit: int = 200,
+    start_index: int = 0,
+) -> JellyfinItemsResponse:
+    """Get artists from a Jellyfin music library."""
+    result = await _client.get_music_artists(library_id, search, limit, start_index)
+    return JellyfinItemsResponse(
+        items=[JellyfinItemResponse(**{k: v for k, v in item.items() if k in JellyfinItemResponse.model_fields}) for item in result["items"]],
+        total=result["total"],
+    )
+
+
+@router.get("/music/albums", response_model=JellyfinItemsResponse)
+async def get_jellyfin_music_albums(
+    artist_id: str,
+    limit: int = 200,
+    start_index: int = 0,
+) -> JellyfinItemsResponse:
+    """Get albums for a specific artist using AlbumArtistIds."""
+    result = await _client.get_albums_by_artist(artist_id, limit, start_index)
+    return JellyfinItemsResponse(
+        items=[JellyfinItemResponse(**{k: v for k, v in item.items() if k in JellyfinItemResponse.model_fields}) for item in result["items"]],
+        total=result["total"],
+    )
+
+
+@router.get("/music/tracks", response_model=JellyfinItemsResponse)
+async def get_jellyfin_music_tracks(
+    album_id: str,
+    limit: int = 200,
+    start_index: int = 0,
+) -> JellyfinItemsResponse:
+    """Get tracks for a specific album using ParentId."""
+    result = await _client.get_tracks_by_album(album_id, limit, start_index)
+    return JellyfinItemsResponse(
+        items=[JellyfinItemResponse(**{k: v for k, v in item.items() if k in JellyfinItemResponse.model_fields}) for item in result["items"]],
         total=result["total"],
     )
 

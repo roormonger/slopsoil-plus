@@ -462,6 +462,52 @@ export function useApi() {
     }
   }, [showMessage])
 
+  const fetchJellyfinMusicLibraries = useCallback(async (): Promise<any[] | null> => {
+    try {
+      const res = await fetch(`${API_URL}/jellyfin/music/libraries`)
+      if (!res.ok) throw new Error('Failed to fetch music libraries')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to fetch music libraries')
+      return null
+    }
+  }, [showMessage])
+
+  const fetchJellyfinMusicArtists = useCallback(async (libraryId: string, search = '', limit = 200): Promise<{ items: any[]; total: number } | null> => {
+    try {
+      const params = new URLSearchParams({ library_id: libraryId, limit: String(limit) })
+      if (search) params.append('search', search)
+      const res = await fetch(`${API_URL}/jellyfin/music/artists?${params}`)
+      if (!res.ok) throw new Error('Failed to fetch artists')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to fetch artists')
+      return null
+    }
+  }, [showMessage])
+
+  const fetchJellyfinMusicAlbums = useCallback(async (artistId: string, limit = 200): Promise<{ items: any[]; total: number } | null> => {
+    try {
+      const res = await fetch(`${API_URL}/jellyfin/music/albums?artist_id=${artistId}&limit=${limit}`)
+      if (!res.ok) throw new Error('Failed to fetch albums')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to fetch albums')
+      return null
+    }
+  }, [showMessage])
+
+  const fetchJellyfinMusicTracks = useCallback(async (albumId: string, limit = 200): Promise<{ items: any[]; total: number } | null> => {
+    try {
+      const res = await fetch(`${API_URL}/jellyfin/music/tracks?album_id=${albumId}&limit=${limit}`)
+      if (!res.ok) throw new Error('Failed to fetch tracks')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to fetch tracks')
+      return null
+    }
+  }, [showMessage])
+
   const fetchJellyfinLibraries = useCallback(async () => {
     try {
       const res = await fetch(`${API_URL}/jellyfin/libraries`)
@@ -1013,5 +1059,9 @@ export function useApi() {
     fetchYoutubeFeed,
     searchYoutube,
     testYoutubeCookies,
+    fetchJellyfinMusicLibraries,
+    fetchJellyfinMusicArtists,
+    fetchJellyfinMusicAlbums,
+    fetchJellyfinMusicTracks,
   }
 }

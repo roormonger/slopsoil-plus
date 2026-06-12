@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Youtube, Tv2, HardDrive, ListMusic, Search, Play, Loader2, Music2 } from 'lucide-react'
+import { Youtube, Tv2, HardDrive, ListMusic, Search, Play, Loader2, Music2, ChevronRight, Disc3, Mic2, Library } from 'lucide-react'
 import { Input } from '../components/ui/input'
 import { Button } from '../components/ui/button'
 import { useApi } from '../hooks/useApi'
@@ -49,6 +49,80 @@ export function Audio() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
+
+  const [jfUrl, setJfUrl] = useState<string>('')
+
+  // Jellyfin music state
+  const [jfLibraries, setJfLibraries] = useState<any[]>([])
+  const [jfLibLoading, setJfLibLoading] = useState(false)
+  const [jfSelectedLib, setJfSelectedLib] = useState<any | null>(null)
+  const [jfArtists, setJfArtists] = useState<any[]>([])
+  const [jfArtistsLoading, setJfArtistsLoading] = useState(false)
+  const [jfSelectedArtist, setJfSelectedArtist] = useState<any | null>(null)
+  const [jfAlbums, setJfAlbums] = useState<any[]>([])
+  const [jfAlbumsLoading, setJfAlbumsLoading] = useState(false)
+  const [jfSelectedAlbum, setJfSelectedAlbum] = useState<any | null>(null)
+  const [jfTracks, setJfTracks] = useState<any[]>([])
+  const [jfTracksLoading, setJfTracksLoading] = useState(false)
+  const [jfPlayingId, setJfPlayingId] = useState<string | null>(null)
+
+  // Jellyfin music: load libraries on tab enter
+  useEffect(() => {
+    if (activeTab !== 'jellyfin') return
+    api.fetchConfig().then(d => { if (d?.settings?.jellyfin_url) setJfUrl(d.settings.jellyfin_url) })
+    setJfLibLoading(true)
+    api.fetchJellyfinMusicLibraries().then(data => {
+      const libs = data ?? []
+      setJfLibraries(libs)
+      setJfLibLoading(false)
+      if (libs.length === 1) {
+        setJfSelectedLib(libs[0])
+      }
+    })
+  }, [activeTab])
+
+  // Load artists when library is selected (or single-library auto-select)
+  useEffect(() => {
+    if (!jfSelectedLib) return
+    setJfArtistsLoading(true)
+    setJfSelectedArtist(null)
+    setJfAlbums([])
+    setJfSelectedAlbum(null)
+    setJfTracks([])
+    api.fetchJellyfinMusicArtists(jfSelectedLib.Id, '', 200).then(data => {
+      setJfArtists(data?.items ?? [])
+      setJfArtistsLoading(false)
+    })
+  }, [jfSelectedLib?.Id])
+
+  // Load albums when artist is selected
+  useEffect(() => {
+    if (!jfSelectedArtist) return
+    setJfAlbumsLoading(true)
+    setJfSelectedAlbum(null)
+    setJfTracks([])
+    api.fetchJellyfinMusicAlbums(jfSelectedArtist.Id).then(data => {
+      setJfAlbums(data?.items ?? [])
+      setJfAlbumsLoading(false)
+    })
+  }, [jfSelectedArtist?.Id])
+
+  // Load tracks when album is selected
+  useEffect(() => {
+    if (!jfSelectedAlbum) return
+    setJfTracksLoading(true)
+    api.fetchJellyfinMusicTracks(jfSelectedAlbum.Id).then(data => {
+      setJfTracks(data?.items ?? [])
+      setJfTracksLoading(false)
+    })
+  }, [jfSelectedAlbum?.Id])
+
+  const handleJfPlay = async (track: any) => {
+    if (!selectedGuild) return
+    setJfPlayingId(track.Id)
+    await api.executeCommand(selectedGuild, 'jf', track.Name, selectedVoiceChannel)
+    setJfPlayingId(null)
+  }
 
   const isSearching = searchQuery.trim().length > 0
   const tracks = isSearching ? searchResults : feed
@@ -166,8 +240,8 @@ export function Audio() {
         </div>
 
         {/* Content area */}
-        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-          {activeTab === 'youtube' ? (
+        <div className={`flex-1 min-h-0 ${activeTab === 'jellyfin' ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'}`}>
+          {activeTab === 'youtube' && (
             feedLoading || searchLoading ? (
               <div className="flex items-center justify-center h-full gap-3">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -176,7 +250,7 @@ export function Audio() {
             ) : sortedTracks.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
                 <Music2 className="h-10 w-10 text-slate-500" />
-                <p className="text-slate-400 text-sm">{isSearching ? 'No results found' : 'No feed items — add genres or playlists in Settings → Sources → Audio'}</p>
+                <p className="text-slate-400 text-sm">{isSearching ? 'No results found' : 'No feed items — add genres or playlists in Settings → Audio'}</p>
               </div>
             ) : (
               <div className="divide-y divide-white/5">
@@ -216,7 +290,140 @@ export function Audio() {
                 )}
               </div>
             )
-          ) : (
+          )}
+
+          {activeTab === 'jellyfin' && (
+            jfLibLoading ? (
+              <div className="flex items-center justify-center h-full gap-3">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <span className="text-slate-400 text-sm">Loading Jellyfin…</span>
+              </div>
+            ) : jfLibraries.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
+                <Tv2 className="h-10 w-10 text-slate-500" />
+                <p className="text-slate-400 text-sm">No music libraries found — check Jellyfin settings</p>
+              </div>
+            ) : (
+              <div className="flex h-full min-h-0">
+                {/* Library column — only shown if multiple libraries */}
+                {jfLibraries.length > 1 && (
+                  <div className="w-44 shrink-0 border-r border-white/5 overflow-y-auto custom-scrollbar">
+                    <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Libraries</div>
+                    {jfLibraries.map(lib => (
+                      <button
+                        key={lib.Id}
+                        onClick={() => setJfSelectedLib(lib)}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
+                          jfSelectedLib?.Id === lib.Id ? 'bg-primary/10 text-primary' : 'text-slate-300 hover:bg-white/5'
+                        }`}
+                      >
+                        <Library className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">{lib.Name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Artists column */}
+                <div className="w-52 shrink-0 border-r border-white/5 overflow-y-auto custom-scrollbar">
+                  <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Artists</div>
+                  {jfArtistsLoading ? (
+                    <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+                  ) : jfArtists.length === 0 ? (
+                    <p className="text-slate-500 text-xs px-3 py-4">No artists</p>
+                  ) : jfArtists.map(artist => (
+                    <button
+                      key={artist.Id}
+                      onClick={() => setJfSelectedArtist(artist)}
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
+                        jfSelectedArtist?.Id === artist.Id ? 'bg-primary/10 text-primary' : 'text-slate-300 hover:bg-white/5'
+                      }`}
+                    >
+                      {jfUrl && artist.ImageTags?.Primary ? (
+                        <img src={`${jfUrl}/Items/${artist.Id}/Images/Primary?tag=${artist.ImageTags.Primary}&quality=80&maxWidth=48`} alt="" className="w-6 h-6 rounded-full object-cover shrink-0" />
+                      ) : (
+                        <Mic2 className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                      )}
+                      <span className="truncate">{artist.Name}</span>
+                      <ChevronRight className="h-3 w-3 ml-auto shrink-0 opacity-30" />
+                    </button>
+                  ))}
+                </div>
+
+                {/* Albums column */}
+                <div className="w-56 shrink-0 border-r border-white/5 overflow-y-auto custom-scrollbar">
+                  <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Albums</div>
+                  {!jfSelectedArtist ? (
+                    <p className="text-slate-500 text-xs px-3 py-4">Select an artist</p>
+                  ) : jfAlbumsLoading ? (
+                    <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+                  ) : jfAlbums.length === 0 ? (
+                    <p className="text-slate-500 text-xs px-3 py-4">No albums</p>
+                  ) : jfAlbums.map(album => (
+                    <button
+                      key={album.Id}
+                      onClick={() => setJfSelectedAlbum(album)}
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
+                        jfSelectedAlbum?.Id === album.Id ? 'bg-primary/10 text-primary' : 'text-slate-300 hover:bg-white/5'
+                      }`}
+                    >
+                      {jfUrl && album.ImageTags?.Primary ? (
+                        <img src={`${jfUrl}/Items/${album.Id}/Images/Primary?tag=${album.ImageTags.Primary}&quality=80&maxWidth=64`} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
+                      ) : (
+                        <Disc3 className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-left">{album.Name}</p>
+                        {album.ProductionYear && <p className="text-xs text-slate-500">{album.ProductionYear}</p>}
+                      </div>
+                      <ChevronRight className="h-3 w-3 ml-auto shrink-0 opacity-30" />
+                    </button>
+                  ))}
+                </div>
+
+                {/* Tracks column */}
+                <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar">
+                  <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Tracks</div>
+                  {!jfSelectedAlbum ? (
+                    <p className="text-slate-500 text-xs px-3 py-4">Select an album</p>
+                  ) : jfTracksLoading ? (
+                    <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+                  ) : jfTracks.length === 0 ? (
+                    <p className="text-slate-500 text-xs px-3 py-4">No tracks</p>
+                  ) : (
+                    <div className="divide-y divide-white/5">
+                      {jfTracks.map((track, i) => (
+                        <div key={track.Id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 transition-colors group">
+                          <span className="text-xs text-slate-600 w-5 text-right shrink-0">{i + 1}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-slate-200 truncate">{track.Name}</p>
+                          </div>
+                          {track.RunTimeTicks && (
+                            <span className="text-xs text-slate-500 shrink-0">{formatDuration(Math.floor(track.RunTimeTicks / 10_000_000))}</span>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={!selectedGuild || jfPlayingId === track.Id}
+                            onClick={() => handleJfPlay(track)}
+                            className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-primary hover:text-primary hover:bg-primary/10"
+                            title={!selectedGuild ? 'Select a guild first' : 'Play'}
+                          >
+                            {jfPlayingId === track.Id
+                              ? <Loader2 className="h-4 w-4 animate-spin" />
+                              : <Play className="h-4 w-4" />
+                            }
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          )}
+
+          {(activeTab === 'local' || activeTab === 'playlists') && (
             <div className="flex items-center justify-center h-full">
               <p className="text-slate-500 text-sm">{TABS.find(t => t.key === activeTab)?.label} — coming soon</p>
             </div>
