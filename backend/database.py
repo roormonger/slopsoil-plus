@@ -32,6 +32,7 @@ ENCRYPTED_SETTINGS_KEYS = {
     "discord_token",
     "tvheadend_pass",
     "jellyfin_api_key",
+    "youtube_cookies",
 }
 
 ENCRYPTED_USER_FIELDS = {

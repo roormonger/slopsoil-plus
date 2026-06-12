@@ -187,6 +187,16 @@ export function useApi() {
     }
   }, [showMessage])
 
+  const testYoutubeCookies = useCallback(async (): Promise<{ ok: boolean; message: string } | null> => {
+    try {
+      const res = await fetch(`${API_URL}/music/test-cookies`, { method: 'POST' })
+      if (!res.ok) throw new Error('Request failed')
+      return await res.json()
+    } catch {
+      return null
+    }
+  }, [])
+
   const fetchYoutubeFeed = useCallback(async (limit = 20): Promise<TrackMeta[] | null> => {
     try {
       const res = await fetch(`${API_URL}/music/feed?limit=${limit}`)
@@ -1002,5 +1012,6 @@ export function useApi() {
     updateFeaturedSettings,
     fetchYoutubeFeed,
     searchYoutube,
+    testYoutubeCookies,
   }
 }

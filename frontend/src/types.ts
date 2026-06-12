@@ -23,6 +23,8 @@ export interface Config {
   soundboard_user_quota: number
   audio_genres: string
   audio_playlists: string
+  youtube_cookies: string
+  audio_feed_refresh_interval: number
 }
 
 export interface TrackMeta {

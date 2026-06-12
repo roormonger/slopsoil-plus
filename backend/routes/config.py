@@ -42,6 +42,8 @@ class ConfigUpdateRequest(BaseModel):
     stream_av_sync_ms: int | None = None
     audio_genres: str | None = None
     audio_playlists: str | None = None
+    youtube_cookies: str | None = None
+    audio_feed_refresh_interval: int | None = None
 
 
 class ConfigResponse(BaseModel):
@@ -89,6 +91,8 @@ async def update_config(request: ConfigUpdateRequest) -> ConfigUpdateResponse:
         "stream_av_sync_ms": str(request.stream_av_sync_ms) if request.stream_av_sync_ms is not None else None,
         "audio_genres": request.audio_genres,
         "audio_playlists": request.audio_playlists,
+        "youtube_cookies": request.youtube_cookies,
+        "audio_feed_refresh_interval": str(request.audio_feed_refresh_interval) if request.audio_feed_refresh_interval is not None else None,
     }
 
     updated = []

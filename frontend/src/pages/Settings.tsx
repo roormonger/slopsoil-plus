@@ -1,16 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
-import { Loader2, Eye, EyeOff, Lock, Zap, Star, LayoutDashboard, Settings2, Database, Radio, Plus, Upload, Trash2 } from 'lucide-react'
+import { Loader2, Eye, EyeOff, Lock, Zap, Star, LayoutDashboard, Settings2, Database, Radio, Plus, Upload, Trash2, Music } from 'lucide-react'
 import type { BotStatus, IptvSource } from '../types'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useApi } from '../hooks/useApi'
 import { timezones, type Config } from '../types'
 
-type TabKey = 'dashboard' | 'system' | 'sources' | 'streaming'
+type TabKey = 'dashboard' | 'system' | 'audio' | 'sources' | 'streaming'
 
 const TABS: { key: TabKey; label: string; icon: typeof Settings2 }[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'system', label: 'System', icon: Settings2 },
+  { key: 'audio', label: 'Audio', icon: Music },
   { key: 'sources', label: 'Sources', icon: Database },
   { key: 'streaming', label: 'Streaming', icon: Radio },
 ]
@@ -68,11 +69,16 @@ export function Settings() {
     soundboard_user_quota: 10,
     audio_genres: '[]',
     audio_playlists: '[]',
+    youtube_cookies: '',
+    audio_feed_refresh_interval: 60,
   })
   const [settingsEnv, setSettingsEnv] = useState<Record<string, {value: string, from_env: boolean}>>({})
   const [showToken, setShowToken] = useState(false)
   const [showTvPass, setShowTvPass] = useState(false)
   const [showJfKey, setShowJfKey] = useState(false)
+  const [showCookies, setShowCookies] = useState(false)
+  const [testingCookies, setTestingCookies] = useState(false)
+  const [cookieTestResult, setCookieTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [botStatus, setBotStatus] = useState<BotStatus | null>(null)
@@ -493,6 +499,163 @@ export function Settings() {
         </div>
       )}
 
+      {/* Audio Tab */}
+      {activeTab === 'audio' && (
+        <div className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* YouTube Feed */}
+            <div className="glass-card rounded-2xl p-6 space-y-4 flex flex-col">
+              <div className="shrink-0">
+                <h3 className="text-xl font-semibold text-slate-200 mb-1">YouTube Feed</h3>
+                <p className="text-sm text-slate-400">Genres and playlists to populate the idle feed</p>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-400">Genres</label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={audioGenreInput}
+                      onChange={(e) => setAudioGenreInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addAudioGenre()}
+                      placeholder="e.g. lo-fi, jazz"
+                      className="glass-input text-slate-200 h-9 text-sm"
+                    />
+                    <Button onClick={addAudioGenre} className="bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 h-9 px-3 shrink-0">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {audioGenres.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {audioGenres.map(g => (
+                        <span key={g} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/20 text-primary text-xs">
+                          {g}
+                          <button onClick={() => removeAudioGenre(g)} className="hover:text-red-400 transition-colors">&times;</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-400">Playlist URLs</label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={audioPlaylistInput}
+                      onChange={(e) => setAudioPlaylistInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addAudioPlaylist()}
+                      placeholder="https://youtube.com/playlist?list=…"
+                      className="glass-input text-slate-200 h-9 text-sm"
+                    />
+                    <Button onClick={addAudioPlaylist} className="bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 h-9 px-3 shrink-0">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {audioPlaylists.length > 0 && (
+                    <div className="space-y-1">
+                      {audioPlaylists.map(p => (
+                        <div key={p} className="flex items-center justify-between p-2 rounded-lg glass-light border-white/5 gap-2">
+                          <span className="text-xs text-slate-300 truncate min-w-0">{p}</span>
+                          <button onClick={() => removeAudioPlaylist(p)} className="text-red-400 hover:text-red-300 shrink-0 text-sm">&times;</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-400">Feed Refresh Interval</label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={5}
+                      max={1440}
+                      value={config.audio_feed_refresh_interval}
+                      onChange={(e) => setConfig({ ...config, audio_feed_refresh_interval: Math.min(1440, Math.max(5, parseInt(e.target.value) || 60)) })}
+                      className="max-w-[100px] glass-input text-slate-200 h-9 text-sm"
+                    />
+                    <span className="text-sm text-slate-400">minutes</span>
+                  </div>
+                  <p className="text-xs text-slate-500">How often the feed refreshes from YouTube (5–1440 min)</p>
+                </div>
+              </div>
+              <div className="shrink-0 pt-2">
+                <Button onClick={handleSaveAudio} disabled={savingAudio} className="w-full bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30">
+                  {savingAudio ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                </Button>
+              </div>
+            </div>
+
+            {/* YouTube Cookies */}
+            <div className="glass-card rounded-2xl p-6 space-y-4 flex flex-col">
+              <div className="shrink-0">
+                <h3 className="text-xl font-semibold text-slate-200 mb-1">YouTube Cookies</h3>
+                <p className="text-sm text-slate-400">Netscape-format cookies for age-gated content. Stored encrypted.</p>
+              </div>
+              <div className="flex-1 space-y-3">
+                <div className="relative">
+                  <textarea
+                    value={showCookies ? config.youtube_cookies : (config.youtube_cookies ? '●'.repeat(32) : '')}
+                    onChange={(e) => showCookies && setConfig({ ...config, youtube_cookies: e.target.value })}
+                    placeholder={showCookies ? '# Netscape HTTP Cookie File\n# Export from your browser using a cookie export extension' : ''}
+                    rows={8}
+                    readOnly={!showCookies}
+                    className="w-full rounded-xl glass-input text-slate-200 text-xs font-mono p-3 resize-none outline-none focus:ring-2 focus:ring-primary/50 pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCookies(!showCookies)}
+                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-200"
+                  >
+                    {showCookies ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Without cookies, age-restricted videos are silently skipped from feed and search results.{' '}
+                  <a
+                    href="https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:text-primary/80 underline underline-offset-2"
+                  >
+                    How to export cookies →
+                  </a>
+                </p>
+                {config.youtube_cookies && (
+                  <button
+                    type="button"
+                    onClick={() => setConfig({ ...config, youtube_cookies: '' })}
+                    className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                  >
+                    Clear cookies
+                  </button>
+                )}
+              </div>
+              {cookieTestResult && (
+                <p className={`text-xs ${cookieTestResult.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {cookieTestResult.ok ? '✓' : '✗'} {cookieTestResult.message}
+                </p>
+              )}
+              <div className="shrink-0 pt-2 flex gap-2">
+                <Button
+                  onClick={async () => {
+                    setTestingCookies(true)
+                    setCookieTestResult(null)
+                    const result = await api.testYoutubeCookies()
+                    setCookieTestResult(result ?? { ok: false, message: 'Request failed' })
+                    setTestingCookies(false)
+                  }}
+                  disabled={testingCookies || !config.youtube_cookies}
+                  className="flex-1 glass-light border border-white/10 text-slate-300 hover:bg-white/10"
+                >
+                  {testingCookies ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Test'}
+                </Button>
+                <Button onClick={handleSaveAudio} disabled={savingAudio} className="flex-1 bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30">
+                  {savingAudio ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sources Tab */}
       {activeTab === 'sources' && (
         <div className="space-y-6">
@@ -705,73 +868,6 @@ export function Settings() {
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto flex items-center justify-center">
                 <p className="text-slate-500 text-sm">Coming soon</p>
-              </div>
-            </div>
-
-            {/* Audio Settings */}
-            <div className="glass-card rounded-2xl p-6 space-y-4 h-[380px] flex flex-col">
-              <div className="shrink-0">
-                <h3 className="text-xl font-semibold text-slate-200 mb-1">Audio</h3>
-                <p className="text-sm text-slate-400">YouTube idle feed — genres &amp; playlists</p>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
-                {/* Genres */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-400">Genres</label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={audioGenreInput}
-                      onChange={(e) => setAudioGenreInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && addAudioGenre()}
-                      placeholder="e.g. lo-fi, jazz"
-                      className="glass-input text-slate-200 h-9 text-sm"
-                    />
-                    <Button onClick={addAudioGenre} className="bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 h-9 px-3 shrink-0">
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  {audioGenres.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {audioGenres.map(g => (
-                        <span key={g} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/20 text-primary text-xs">
-                          {g}
-                          <button onClick={() => removeAudioGenre(g)} className="hover:text-red-400 transition-colors">&times;</button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {/* Playlists */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-400">Playlist URLs</label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={audioPlaylistInput}
-                      onChange={(e) => setAudioPlaylistInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && addAudioPlaylist()}
-                      placeholder="https://youtube.com/playlist?list=…"
-                      className="glass-input text-slate-200 h-9 text-sm"
-                    />
-                    <Button onClick={addAudioPlaylist} className="bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 h-9 px-3 shrink-0">
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  {audioPlaylists.length > 0 && (
-                    <div className="space-y-1">
-                      {audioPlaylists.map(p => (
-                        <div key={p} className="flex items-center justify-between p-2 rounded-lg glass-light border-white/5 gap-2">
-                          <span className="text-xs text-slate-300 truncate min-w-0">{p}</span>
-                          <button onClick={() => removeAudioPlaylist(p)} className="text-red-400 hover:text-red-300 shrink-0 text-sm">&times;</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="shrink-0 pt-2">
-                <Button onClick={handleSaveAudio} disabled={savingAudio} className="w-full bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30">
-                  {savingAudio ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
-                </Button>
               </div>
             </div>
           </div>
