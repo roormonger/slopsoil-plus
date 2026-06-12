@@ -23,7 +23,9 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
+import os
 import re
+import tempfile
 from typing import TYPE_CHECKING, cast
 
 import discord
@@ -51,32 +53,53 @@ class MusicTrack:
 
 
 # yt-dlp options for audio extraction
-_YDL_OPTS = {
-    "format": "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
+_YDL_OPTS_BASE = {
     "quiet": True,
     "no_warnings": True,
     "extract_flat": False,
 }
 
+
+def _ydl_opts_with_cookies() -> tuple[dict, str | None]:
+    """Return yt-dlp opts merged with cookie file if configured. Returns (opts, tmp_path)."""
+    from backend.database import get_setting
+    cookie_text = get_setting("youtube_cookies") or ""
+    if not cookie_text.strip():
+        return dict(_YDL_OPTS_BASE), None
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
+    tmp.write(cookie_text)
+    tmp.flush()
+    tmp.close()
+    return {**_YDL_OPTS_BASE, "cookiefile": tmp.name}, tmp.name
+
+
 # FFmpeg options for audio playback
 _FFMPEG_BEFORE_OPTS = (
     "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 " "-fflags +nobuffer"
 )
-_FFMPEG_OPTS = "-vn -ar 48000 -ac 2"  # No video, 48kHz, stereo
+_FFMPEG_OPTS = "-vn"
 
 
 async def _extract_track_info(url: str, requester: str) -> MusicTrack | None:
     """Extract track info from a YouTube URL using yt-dlp."""
     import yt_dlp
 
+    opts, tmp_path = _ydl_opts_with_cookies()
+
     def _run() -> dict | None:
         try:
-            with yt_dlp.YoutubeDL(_YDL_OPTS) as ydl:
+            with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=False)
                 return info
         except Exception as e:
             log.warning("yt-dlp extract failed for %s: %s", url, e)
             return None
+        finally:
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
 
     loop = asyncio.get_event_loop()
     info = await loop.run_in_executor(None, _run)
@@ -84,26 +107,30 @@ async def _extract_track_info(url: str, requester: str) -> MusicTrack | None:
     if not info:
         return None
 
-    # Get the best audio format URL
+    # Get the best audio-only format, sorted by bitrate descending
     formats = info.get("formats", [])
     audio_formats = [f for f in formats if f.get("acodec") != "none" and f.get("vcodec") == "none"]
 
     if not audio_formats:
-        # Fallback to any format with audio
         audio_formats = [f for f in formats if f.get("acodec") != "none"]
 
     if not audio_formats:
         log.warning("No audio format found for %s", url)
         return None
 
-    # Prefer webm/m4a, fallback to best available
-    best_audio = None
-    for fmt in audio_formats:
-        if fmt.get("ext") in ("webm", "m4a"):
-            best_audio = fmt
-            break
-    if not best_audio:
-        best_audio = audio_formats[0]
+    # Sort by bitrate descending — highest quality first
+    audio_formats.sort(key=lambda f: f.get("abr") or f.get("tbr") or 0, reverse=True)
+    best_audio = audio_formats[0]
+
+    abr = best_audio.get("abr") or best_audio.get("tbr")
+    log.info(
+        "Audio format selected: %s ext=%s abr=%skbps acodec=%s (cookies=%s)",
+        best_audio.get("format_id"),
+        best_audio.get("ext"),
+        f"{abr:.0f}" if abr else "?",
+        best_audio.get("acodec"),
+        opts.get("cookiefile") is not None,
+    )
 
     return MusicTrack(
         url=best_audio.get("url"),
@@ -119,17 +146,23 @@ async def _search_youtube(query: str, requester: str) -> MusicTrack | None:
     """Search YouTube and return the first result as a MusicTrack."""
     import yt_dlp
 
-    # yt-dlp search prefix
     search_url = f"ytsearch1:{query}"
+    opts, tmp_path = _ydl_opts_with_cookies()
 
     def _run() -> dict | None:
         try:
-            with yt_dlp.YoutubeDL(_YDL_OPTS) as ydl:
+            with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(search_url, download=False)
                 return info
         except Exception as e:
             log.warning("yt-dlp search failed for '%s': %s", query, e)
             return None
+        finally:
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
 
     loop = asyncio.get_event_loop()
     info = await loop.run_in_executor(None, _run)

@@ -928,20 +928,15 @@ async def _broadcast_all_state() -> None:
     """Query current bot state and broadcast any changes via WebSocket."""
     global _last_now_playing, _last_bot_status, _last_music_status, _last_voice_status, _last_guilds
 
-    log.info("DEBUG _broadcast_all_state: bot_instance=%s", _bot_instance is not None)
     if _bot_instance is None:
         # Bot offline — broadcast same format as get_bot_status()
         try:
             offline_status = get_bot_status()
         except Exception:
-            log.info("DEBUG _broadcast_all_state: get_bot_status failed while offline")
             return
         if _last_bot_status != offline_status:
             _last_bot_status = offline_status
             await ws_manager.broadcast("bot:status", offline_status)
-            log.info("DEBUG _broadcast_all_state: broadcast offline bot:status")
-        else:
-            log.info("DEBUG _broadcast_all_state: bot offline, status unchanged")
         return
 
     # Bot online — check status
@@ -956,13 +951,10 @@ async def _broadcast_all_state() -> None:
     # Check now playing
     try:
         current_np = get_now_playing()
-        log.debug("DEBUG _broadcast_all_state: now_playing count=%d", current_np.get("count", 0))
     except Exception:
         current_np = {"streams": [], "count": 0}
-        log.debug("DEBUG _broadcast_all_state: now_playing exception")
     if _last_now_playing != current_np:
         _last_now_playing = current_np
-        log.info("DEBUG _broadcast_all_state: broadcasting now_playing with %d streams", current_np.get("count", 0))
         await ws_manager.broadcast("player:now-playing", current_np)
 
     # Check music status
@@ -977,32 +969,23 @@ async def _broadcast_all_state() -> None:
     # Check voice status
     try:
         current_voice = get_bot_voice_status()
-        log.info("DEBUG _broadcast_all_state: voice status: connected=%s guild=%s channel=%s", current_voice.get("connected"), current_voice.get("guild_id"), current_voice.get("channel_id"))
     except Exception:
         current_voice = {"connected": False}
-        log.info("DEBUG _broadcast_all_state: get_bot_voice_status exception")
     if _last_voice_status != current_voice:
         _last_voice_status = current_voice
         await ws_manager.broadcast("voice:state", current_voice)
-        log.info("DEBUG _broadcast_all_state: broadcast voice:state changed")
 
     # Check guilds (with voice channels embedded)
     try:
         current_guilds = get_bot_guilds()
-        log.info("DEBUG _broadcast_all_state: get_bot_guilds returned %d guilds", len(current_guilds))
         for guild in current_guilds:
             channels = get_guild_voice_channels(guild["id"])
             guild["voice_channels"] = channels or []
-            log.info("DEBUG _broadcast_all_state: guild %s has %d voice channels", guild["id"], len(guild["voice_channels"]))
-    except Exception as e:
-        log.info("DEBUG _broadcast_all_state: get_bot_guilds exception: %s", e)
+    except Exception:
         current_guilds = []
     if _last_guilds != current_guilds:
-        log.info("DEBUG _broadcast_all_state: guilds changed, broadcasting %d guilds", len(current_guilds))
         _last_guilds = current_guilds
         await ws_manager.broadcast("guilds:list", current_guilds)
-    else:
-        log.info("DEBUG _broadcast_all_state: guilds unchanged (%d)", len(current_guilds) if current_guilds else 0)
 
 
 async def _ws_state_watcher() -> None:

@@ -10,6 +10,7 @@ import urllib.parse
 import urllib.request
 from typing import TYPE_CHECKING, cast
 
+import discord
 from discord.ext import commands
 
 from cogs.iptv import extract_hls_variant_url as _extract_hls_variant_url
@@ -147,6 +148,17 @@ class JellyfinClient:
 
         # Append api_key so FFmpeg/ffprobe can authenticate for HLS segment fetches.
         return f"{full}&api_key={self._api_key}"
+
+    async def get_audio_stream_url(self, item_id: str) -> str | None:
+        """Return a direct audio stream URL for an Audio item (no transcoding session needed)."""
+        user_id = await self._get_user_id()
+        params: dict[str, str] = {
+            "Static": "true",
+            "api_key": self._api_key,
+        }
+        if user_id:
+            params["UserId"] = user_id
+        return f"{self.base_url}/Audio/{item_id}/stream?{urllib.parse.urlencode(params)}"
 
     async def search(self, query: str, limit: int = 25) -> list[dict]:
         """Search Jellyfin for movies, series, and episodes matching query."""
@@ -295,7 +307,8 @@ class Jellyfin(commands.Cog):
 
         label = _fmt_item(item)
         item_id = item.get("Id", "")
-        log.info("Jellyfin: streaming '%s' (id: %s)", label, item_id)
+        item_type = item.get("Type", "")
+        log.info("Jellyfin: streaming '%s' (id: %s type: %s)", label, item_id, item_type)
 
         guild, voice_channel, vc = await resolve_voice(ctx)
         if not voice_channel:
@@ -305,7 +318,53 @@ class Jellyfin(commands.Cog):
 
         await ctx.send("checking stream…")
 
-        # Ask Jellyfin to start a transcoding session and give us the HLS URL.
+        # Audio items play via FFmpegPCMAudio through the voice client (no video stream).
+        # Video items use the HLS transcoding + go-live path.
+        if item_type == "Audio":
+            stream_url = await self.client.get_audio_stream_url(item_id)
+            if stream_url is None:
+                await ctx.send(f"could not get stream URL for **{label}**")
+                return
+            safe_url = stream_url.replace(self.client._api_key, "***")
+            log.info("Jellyfin audio stream URL: %s", safe_url)
+
+            if not vc:
+                vc = await voice_channel.connect(self_deaf=True)
+            elif vc.channel != voice_channel:
+                await vc.move_to(voice_channel)
+
+            volume = self.bot.music_volumes.get(guild.id, 1.0)
+            audio_source = discord.FFmpegPCMAudio(
+                stream_url,
+                before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -fflags +nobuffer",
+                options="-vn",
+            )
+            source = discord.PCMVolumeTransformer(audio_source, volume=volume)
+
+            if vc.is_playing():
+                vc.stop()
+
+            from cogs.music import MusicTrack
+            track = MusicTrack(
+                url=stream_url,
+                title=label,
+                duration=item.get("RunTimeTicks", 0) // 10_000_000 if item.get("RunTimeTicks") else 0,
+                thumbnail=item.get("Thumbnail", ""),
+                requested_by=str(ctx.author),
+                webpage_url=stream_url,
+            )
+            self.bot.music_current[guild.id] = track
+
+            def _after(error: Exception | None) -> None:
+                if error:
+                    log.error("Jellyfin audio playback error: %s", error)
+                self.bot.music_current.pop(guild.id, None)
+
+            vc.play(source, after=_after)
+            log.info("Jellyfin: started audio playback '%s' in guild %s", label, guild.id)
+            await ctx.send(f"▶️ Now playing: **{label}**")
+            return
+
         stream_url = await self.client.get_stream_url(item_id)
         if stream_url is None:
             await ctx.send(
@@ -437,6 +496,26 @@ class Jellyfin(commands.Cog):
                 "Jellyfin is not configured. "
                 "Set `JELLYFIN_URL` and `JELLYFIN_API_KEY` in `.env` and restart the bot."
             )
+            return
+
+        # Direct item ID shortcut — sent by the web UI when user picks from browser
+        # Format: "id:<itemId> title:<name> thumb:<url>"
+        if query.startswith("id:"):
+            rest = query[3:].strip()
+            thumb_match = re.search(r"\s+thumb:(\S+)$", rest)
+            item_thumb = ""
+            if thumb_match:
+                item_thumb = thumb_match.group(1).strip()
+                rest = rest[:thumb_match.start()].strip()
+            title_match = re.search(r"\s+title:(.+)$", rest)
+            if title_match:
+                item_id = rest[:title_match.start()].strip()
+                item_name = title_match.group(1).strip()
+            else:
+                item_id = rest
+                item_name = item_id
+            log.info("Jellyfin direct play by id=%s (%s) requested by %s", item_id, item_name, ctx.author)
+            await self._play_item(ctx, {"Id": item_id, "Name": item_name, "Type": "Audio", "Thumbnail": item_thumb})
             return
 
         show, season, episode = _parse_episode_query(query)

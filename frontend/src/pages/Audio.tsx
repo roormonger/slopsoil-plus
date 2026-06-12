@@ -120,7 +120,16 @@ export function Audio() {
   const handleJfPlay = async (track: any) => {
     if (!selectedGuild) return
     setJfPlayingId(track.Id)
-    await api.executeCommand(selectedGuild, 'jf', track.Name, selectedVoiceChannel)
+    const thumbUrl = jfUrl && (track.ImageTags?.Primary
+      ? `${jfUrl}/Items/${track.Id}/Images/Primary?tag=${track.ImageTags.Primary}&quality=80&maxWidth=96`
+      : jfSelectedAlbum?.ImageTags?.Primary
+        ? `${jfUrl}/Items/${jfSelectedAlbum.Id}/Images/Primary?tag=${jfSelectedAlbum.ImageTags.Primary}&quality=80&maxWidth=96`
+        : jfSelectedArtist?.ImageTags?.Primary
+          ? `${jfUrl}/Items/${jfSelectedArtist.Id}/Images/Primary?tag=${jfSelectedArtist.ImageTags.Primary}&quality=80&maxWidth=96`
+          : '')
+    const title = jfSelectedArtist?.Name ? `${jfSelectedArtist.Name} - ${track.Name}` : track.Name
+    const thumbPart = thumbUrl ? ` thumb:${thumbUrl}` : ''
+    await api.executeCommand(selectedGuild, 'jf', `id:${track.Id} title:${title}${thumbPart}`, selectedVoiceChannel)
     setJfPlayingId(null)
   }
 

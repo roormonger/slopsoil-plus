@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { RefreshCw, Phone, PhoneOff, ArrowRightLeft, ChevronDown, Music, Tv, Terminal } from 'lucide-react'
+import { RefreshCw, Phone, PhoneOff, ArrowRightLeft, ChevronDown, Music, Tv, Terminal, Pause, Play } from 'lucide-react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Dropdown } from './ui/dropdown'
@@ -15,6 +15,8 @@ interface TopNavigationProps {
 
 function NowPlayingBar() {
   const { nowPlaying, musicStatus } = useWebSocketContext()
+  const api = useApi()
+  const { selectedGuild } = useGuild()
   const [elapsed, setElapsed] = useState(0)
 
   const videoStream = nowPlaying[0] ?? null
@@ -22,8 +24,10 @@ function NowPlayingBar() {
 
   const activeTitle = videoStream?.title ?? musicTrack?.title ?? null
   const isMusic = !videoStream && !!musicTrack
+  const isPaused = isMusic && !!musicStatus?.is_paused
   const startedAt = videoStream?.started_at ?? null
   const duration = musicTrack?.duration ?? 0
+  const thumbnail = musicTrack?.thumbnail ?? null
 
   useEffect(() => {
     if (!startedAt && !isMusic) {
@@ -33,14 +37,14 @@ function NowPlayingBar() {
     const tick = () => {
       if (startedAt) {
         setElapsed(Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
-      } else if (isMusic) {
+      } else if (isMusic && !isPaused) {
         setElapsed(prev => prev + 1)
       }
     }
     tick()
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
-  }, [startedAt, isMusic])
+  }, [startedAt, isMusic, isPaused])
 
   useEffect(() => {
     if (isMusic) setElapsed(0)
@@ -56,11 +60,39 @@ function NowPlayingBar() {
 
   const progress = duration > 0 ? Math.min((elapsed / duration) * 100, 100) : null
 
+  const handlePlayPause = () => {
+    if (!selectedGuild) return
+    api.controlMusic(selectedGuild, isPaused ? 'resume' : 'pause')
+  }
+
+  const accentClass = isMusic ? 'text-violet-400' : 'text-blue-400'
+  const accentBg = isMusic ? 'bg-violet-500/20' : 'bg-blue-500/20'
+  const barColor = isMusic ? 'bg-violet-400' : 'bg-blue-400'
+
   return (
-    <div className="flex items-center gap-3 max-w-sm">
-      <div className={`p-1.5 rounded-lg shrink-0 ${isMusic ? 'bg-violet-500/20 text-violet-400' : 'bg-blue-500/20 text-blue-400'}`}>
-        {isMusic ? <Music className="w-3.5 h-3.5" /> : <Tv className="w-3.5 h-3.5" />}
+    <div className="flex items-center gap-2.5 max-w-lg w-full">
+      {/* Thumbnail with icon badge */}
+      <div className="relative shrink-0">
+        {thumbnail ? (
+          <img
+            src={thumbnail}
+            alt=""
+            className="w-9 h-9 rounded-lg object-cover"
+            onError={(e) => { e.currentTarget.style.display = 'none' }}
+          />
+        ) : (
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${accentBg}`}>
+            {isMusic ? <Music className={`w-4 h-4 ${accentClass}`} /> : <Tv className={`w-4 h-4 ${accentClass}`} />}
+          </div>
+        )}
+        {thumbnail && (
+          <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center border border-slate-900 bg-slate-800`}>
+            {isMusic ? <Music className={`w-2 h-2 ${accentClass}`} /> : <Tv className={`w-2 h-2 ${accentClass}`} />}
+          </div>
+        )}
       </div>
+
+      {/* Title + progress */}
       <div className="flex-1 min-w-0">
         <p className="text-xs font-medium text-slate-200 truncate leading-tight">{activeTitle}</p>
         <div className="flex items-center gap-2 mt-0.5">
@@ -68,7 +100,7 @@ function NowPlayingBar() {
             <>
               <div className="flex-1 h-0.5 bg-slate-700 rounded-full overflow-hidden">
                 <div
-                  className={`h-full rounded-full transition-all duration-1000 ${isMusic ? 'bg-violet-400' : 'bg-blue-400'}`}
+                  className={`h-full rounded-full transition-all duration-1000 ${barColor}`}
                   style={{ width: `${progress}%` }}
                 />
               </div>
@@ -84,6 +116,18 @@ function NowPlayingBar() {
           )}
         </div>
       </div>
+
+      {/* Play/Pause button — only for music */}
+      {isMusic && (
+        <button
+          onClick={handlePlayPause}
+          className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-colors ${accentBg} hover:opacity-80`}
+        >
+          {isPaused
+            ? <Play className={`w-3.5 h-3.5 ${accentClass}`} />
+            : <Pause className={`w-3.5 h-3.5 ${accentClass}`} />}
+        </button>
+      )}
     </div>
   )
 }
