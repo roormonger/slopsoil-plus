@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, Settings, Tv, Bookmark, Volume2, Headphones, PlayCircle, LogOut, User, Tags } from 'lucide-react'
+import { LayoutDashboard, Users, Settings, Tv, Bookmark, Volume2, Headphones, PlayCircle, LogOut, User, Tags, Video } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 interface LayoutProps {
@@ -40,6 +40,7 @@ export function Layout({ children }: LayoutProps) {
           <SidebarItem to="/iptv" icon={Tv} label="IPTV" />
           <SidebarItem to="/bookmarks" icon={Bookmark} label="Bookmarks" />
           <SidebarItem to="/jellyfin" icon={PlayCircle} label="Jellyfin" />
+          <SidebarItem to="/video" icon={Video} label="Local Video" />
 
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 px-4 mt-6">Voice</div>
           <SidebarItem to="/soundboard" icon={Volume2} label="Soundboard" />

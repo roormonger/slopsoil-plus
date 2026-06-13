@@ -66,6 +66,50 @@ export function Audio() {
   const [jfTracksLoading, setJfTracksLoading] = useState(false)
   const [jfPlayingId, setJfPlayingId] = useState<string | null>(null)
 
+  // Local music state
+  const [localArtists, setLocalArtists] = useState<any[]>([])
+  const [localLoading, setLocalLoading] = useState(false)
+  const [localSelectedArtist, setLocalSelectedArtist] = useState<any | null>(null)
+  const [localSelectedAlbum, setLocalSelectedAlbum] = useState<any | null>(null)
+  const [localPlayingId, setLocalPlayingId] = useState<string | null>(null)
+
+  // Local music: load when tab entered
+  useEffect(() => {
+    if (activeTab !== 'local') return
+    setLocalLoading(true)
+    api.fetchLocalMusic().then(data => {
+      setLocalArtists(data?.artists ?? [])
+      setLocalLoading(false)
+      // Auto-select first artist if only one
+      if (data?.artists?.length === 1) {
+        setLocalSelectedArtist(data.artists[0])
+      }
+    })
+  }, [activeTab])
+
+  // Load albums when artist selected
+  useEffect(() => {
+    if (!localSelectedArtist) {
+      setLocalSelectedAlbum(null)
+      return
+    }
+    // Auto-select first album if only one
+    if (localSelectedArtist.albums?.length === 1) {
+      setLocalSelectedAlbum(localSelectedArtist.albums[0])
+    }
+  }, [localSelectedArtist])
+
+  const handleLocalPlay = async (track: any) => {
+    if (!selectedGuild) return
+    setLocalPlayingId(track.path)
+    const artist = localSelectedArtist
+    const album = localSelectedAlbum
+    const title = artist ? `${artist.name} - ${album ? album.name + ' - ' : ''}${track.name}` : track.name
+    const thumb = album?.thumbnail || artist?.thumbnail || ''
+    await api.playLocalAudio(selectedGuild, track.path, title, thumb, selectedVoiceChannel)
+    setLocalPlayingId(null)
+  }
+
   // Jellyfin music: load libraries on tab enter
   useEffect(() => {
     if (activeTab !== 'jellyfin') return
@@ -432,7 +476,106 @@ export function Audio() {
             )
           )}
 
-          {(activeTab === 'local' || activeTab === 'playlists') && (
+          {activeTab === 'local' && (
+            localLoading ? (
+              <div className="flex items-center justify-center h-full gap-3">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <span className="text-slate-400 text-sm">Loading local music…</span>
+              </div>
+            ) : localArtists.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
+                <HardDrive className="h-10 w-10 text-slate-500" />
+                <p className="text-slate-400 text-sm">No local music found — add a music source in Settings</p>
+              </div>
+            ) : (
+              <div className="flex h-full min-h-0">
+                {/* Artists column */}
+                <div className="w-52 shrink-0 border-r border-white/5 overflow-y-auto custom-scrollbar">
+                  <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Artists</div>
+                  {localArtists.map(artist => (
+                    <button
+                      key={artist.path}
+                      onClick={() => {
+                        setLocalSelectedArtist(artist)
+                        setLocalSelectedAlbum(null)
+                      }}
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
+                        localSelectedArtist?.path === artist.path ? 'bg-primary/10 text-primary' : 'text-slate-300 hover:bg-white/5'
+                      }`}
+                    >
+                      {artist.thumbnail ? (
+                        <img src={artist.thumbnail} alt="" className="w-6 h-6 rounded-full object-cover shrink-0" />
+                      ) : (
+                        <Mic2 className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                      )}
+                      <span className="truncate">{artist.name}</span>
+                      <ChevronRight className="h-3 w-3 ml-auto shrink-0 opacity-30" />
+                    </button>
+                  ))}
+                </div>
+
+                {/* Albums column */}
+                <div className="w-56 shrink-0 border-r border-white/5 overflow-y-auto custom-scrollbar">
+                  <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Albums</div>
+                  {!localSelectedArtist ? (
+                    <p className="text-slate-500 text-xs px-3 py-4">Select an artist</p>
+                  ) : (
+                    localSelectedArtist.albums.map((album: any) => (
+                      <button
+                        key={album.path}
+                        onClick={() => setLocalSelectedAlbum(album)}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
+                          localSelectedAlbum?.path === album.path ? 'bg-primary/10 text-primary' : 'text-slate-300 hover:bg-white/5'
+                        }`}
+                      >
+                        {album.thumbnail ? (
+                          <img src={album.thumbnail} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
+                        ) : (
+                          <Disc3 className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                        )}
+                        <span className="truncate">{album.name}</span>
+                        <ChevronRight className="h-3 w-3 ml-auto shrink-0 opacity-30" />
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                {/* Tracks column */}
+                <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar">
+                  <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Tracks</div>
+                  {!localSelectedAlbum ? (
+                    <p className="text-slate-500 text-xs px-3 py-4">Select an album</p>
+                  ) : (
+                    <div className="divide-y divide-white/5">
+                      {localSelectedAlbum.tracks.map((track: any, i: number) => (
+                        <div key={track.path} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 transition-colors group">
+                          <span className="text-xs text-slate-600 w-5 text-right shrink-0">{i + 1}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-slate-200 truncate">{track.name}</p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={!selectedGuild || localPlayingId === track.path}
+                            onClick={() => handleLocalPlay(track)}
+                            className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-primary hover:text-primary hover:bg-primary/10"
+                            title={!selectedGuild ? 'Select a guild first' : 'Play'}
+                          >
+                            {localPlayingId === track.path
+                              ? <Loader2 className="h-4 w-4 animate-spin" />
+                              : <Play className="h-4 w-4" />
+                            }
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          )}
+
+          {activeTab === 'playlists' && (
             <div className="flex items-center justify-center h-full">
               <p className="text-slate-500 text-sm">{TABS.find(t => t.key === activeTab)?.label} — coming soon</p>
             </div>

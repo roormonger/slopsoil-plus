@@ -574,6 +574,58 @@ export function useApi() {
     }
   }, [showMessage])
 
+  const fetchLocalMusic = useCallback(async (): Promise<{ artists: any[] } | null> => {
+    try {
+      const res = await fetch(`${API_URL}/local/music`)
+      if (!res.ok) throw new Error('Failed to fetch local music')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to fetch local music')
+      return null
+    }
+  }, [showMessage])
+
+  const fetchLocalVideo = useCallback(async (): Promise<{ videos: any[] } | null> => {
+    try {
+      const res = await fetch(`${API_URL}/local/video`)
+      if (!res.ok) throw new Error('Failed to fetch local video')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to fetch local video')
+      return null
+    }
+  }, [showMessage])
+
+  const playLocalAudio = useCallback(async (guildId: string, path: string, title: string, thumbnail: string, channelId?: string | null): Promise<{ success: boolean; message: string } | null> => {
+    try {
+      const res = await fetch(`${API_URL}/local/play-audio`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guild_id: guildId, path, title, thumbnail, channel_id: channelId }),
+      })
+      if (!res.ok) throw new Error('Failed to play local audio')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to play local audio')
+      return null
+    }
+  }, [showMessage])
+
+  const playLocalVideo = useCallback(async (guildId: string, path: string, title: string, thumbnail: string, channelId?: string | null): Promise<{ success: boolean; message: string } | null> => {
+    try {
+      const res = await fetch(`${API_URL}/local/play-video`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guild_id: guildId, path, title, thumbnail, channel_id: channelId }),
+      })
+      if (!res.ok) throw new Error('Failed to play local video')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to play local video')
+      return null
+    }
+  }, [showMessage])
+
   const fetchJellyfinLibraries = useCallback(async () => {
     try {
       const res = await fetch(`${API_URL}/jellyfin/libraries`)
@@ -1134,5 +1186,9 @@ export function useApi() {
     addLocalSource,
     deleteLocalSource,
     toggleLocalSource,
+    fetchLocalMusic,
+    fetchLocalVideo,
+    playLocalAudio,
+    playLocalVideo,
   }
 }

@@ -15,6 +15,7 @@ import { Soundboard } from './pages/Soundboard'
 import { SoundboardManager } from './pages/SoundboardManager'
 import { Audio } from './pages/Audio'
 import { Jellyfin } from './pages/Jellyfin'
+import { Video } from './pages/Video'
 import Login from './pages/Login'
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -78,6 +79,7 @@ function AppContent() {
                 <Route path="/jellyfin" element={<Jellyfin />} />
                 <Route path="/soundboard" element={<Soundboard />} />
                 <Route path="/audio" element={<Audio />} />
+                <Route path="/video" element={<Video />} />
               </Routes>
             </AuthenticatedLayout>
           </ProtectedRoute>
