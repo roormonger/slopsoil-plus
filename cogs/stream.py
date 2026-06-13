@@ -235,8 +235,6 @@ async def start_live_stream(
     vc = await ensure_voice(voice_channel, vc)
 
     cancel_live_stream(bot, guild.id)
-    if vc.is_playing():
-        vc.stop()
 
     label = f"**{title}**" + (f" ({subtitle})" if subtitle else "")
     log.info("starting go-live stream: %s → %s", label, _safe_url(url))

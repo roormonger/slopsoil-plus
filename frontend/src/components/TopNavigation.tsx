@@ -13,27 +13,21 @@ interface TopNavigationProps {
   onNavigate?: (page: string) => void
 }
 
-function NowPlayingBar() {
-  const { nowPlaying, musicStatus } = useWebSocketContext()
-  const api = useApi()
-  const { selectedGuild } = useGuild()
+function MediaCard({
+  type, title, thumbnail, startedAt, duration, isPaused, onPlayPause,
+}: {
+  type: 'video' | 'music'
+  title: string
+  thumbnail?: string | null
+  startedAt?: string | null
+  duration?: number
+  isPaused?: boolean
+  onPlayPause?: () => void
+}) {
   const [elapsed, setElapsed] = useState(0)
-
-  const videoStream = nowPlaying[0] ?? null
-  const musicTrack = musicStatus?.is_playing || musicStatus?.is_paused ? musicStatus.current : null
-
-  const activeTitle = videoStream?.title ?? musicTrack?.title ?? null
-  const isMusic = !videoStream && !!musicTrack
-  const isPaused = isMusic && !!musicStatus?.is_paused
-  const startedAt = videoStream?.started_at ?? null
-  const duration = musicTrack?.duration ?? 0
-  const thumbnail = musicTrack?.thumbnail ?? null
+  const isMusic = type === 'music'
 
   useEffect(() => {
-    if (!startedAt && !isMusic) {
-      setElapsed(0)
-      return
-    }
     const tick = () => {
       if (startedAt) {
         setElapsed(Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
@@ -46,70 +40,46 @@ function NowPlayingBar() {
     return () => clearInterval(id)
   }, [startedAt, isMusic, isPaused])
 
-  useEffect(() => {
-    if (isMusic) setElapsed(0)
-  }, [musicTrack?.url])
+  useEffect(() => { setElapsed(0) }, [title])
 
-  if (!activeTitle) return null
-
-  const fmt = (s: number) => {
-    const m = Math.floor(s / 60)
-    const sec = s % 60
-    return `${m}:${sec.toString().padStart(2, '0')}`
-  }
-
-  const progress = duration > 0 ? Math.min((elapsed / duration) * 100, 100) : null
-
-  const handlePlayPause = () => {
-    if (!selectedGuild) return
-    api.controlMusic(selectedGuild, isPaused ? 'resume' : 'pause')
-  }
-
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+  const progress = duration && duration > 0 ? Math.min((elapsed / duration) * 100, 100) : null
   const accentClass = isMusic ? 'text-violet-400' : 'text-blue-400'
   const accentBg = isMusic ? 'bg-violet-500/20' : 'bg-blue-500/20'
   const barColor = isMusic ? 'bg-violet-400' : 'bg-blue-400'
 
   return (
-    <div className="flex items-center gap-2.5 max-w-lg w-full">
-      {/* Thumbnail with icon badge */}
+    <div className="flex items-center gap-2 min-w-0 flex-1">
       <div className="relative shrink-0">
         {thumbnail ? (
-          <img
-            src={thumbnail}
-            alt=""
-            className="w-9 h-9 rounded-lg object-cover"
-            onError={(e) => { e.currentTarget.style.display = 'none' }}
-          />
+          <>
+            <img src={thumbnail} alt="" className="w-9 h-9 rounded-lg object-cover"
+              onError={(e) => { e.currentTarget.style.display = 'none' }} />
+            <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center border border-slate-900 bg-slate-800">
+              {isMusic ? <Music className={`w-2 h-2 ${accentClass}`} /> : <Tv className={`w-2 h-2 ${accentClass}`} />}
+            </div>
+          </>
         ) : (
           <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${accentBg}`}>
             {isMusic ? <Music className={`w-4 h-4 ${accentClass}`} /> : <Tv className={`w-4 h-4 ${accentClass}`} />}
           </div>
         )}
-        {thumbnail && (
-          <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center border border-slate-900 bg-slate-800`}>
-            {isMusic ? <Music className={`w-2 h-2 ${accentClass}`} /> : <Tv className={`w-2 h-2 ${accentClass}`} />}
-          </div>
-        )}
       </div>
 
-      {/* Title + progress */}
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-medium text-slate-200 truncate leading-tight">{activeTitle}</p>
+        <p className="text-xs font-medium text-slate-200 truncate leading-tight">{title}</p>
         <div className="flex items-center gap-2 mt-0.5">
           {progress !== null ? (
             <>
               <div className="flex-1 h-0.5 bg-slate-700 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-1000 ${barColor}`}
-                  style={{ width: `${progress}%` }}
-                />
+                <div className={`h-full rounded-full transition-all duration-1000 ${barColor}`} style={{ width: `${progress}%` }} />
               </div>
-              <span className="text-[10px] text-slate-500 shrink-0">{fmt(elapsed)} / {fmt(duration)}</span>
+              <span className="text-[10px] text-slate-500 shrink-0">{fmt(elapsed)} / {fmt(duration ?? 0)}</span>
             </>
           ) : (
             <>
               <div className="flex-1 h-0.5 bg-slate-700 rounded-full overflow-hidden">
-                <div className="h-full w-full bg-blue-400/40 animate-pulse rounded-full" />
+                <div className={`h-full w-full ${barColor} opacity-40 animate-pulse rounded-full`} />
               </div>
               <span className="text-[10px] text-slate-500 shrink-0">{fmt(elapsed)}</span>
             </>
@@ -117,16 +87,55 @@ function NowPlayingBar() {
         </div>
       </div>
 
-      {/* Play/Pause button — only for music */}
-      {isMusic && (
-        <button
-          onClick={handlePlayPause}
-          className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-colors ${accentBg} hover:opacity-80`}
-        >
+      {isMusic && onPlayPause && (
+        <button onClick={onPlayPause}
+          className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-colors ${accentBg} hover:opacity-80`}>
           {isPaused
             ? <Play className={`w-3.5 h-3.5 ${accentClass}`} />
             : <Pause className={`w-3.5 h-3.5 ${accentClass}`} />}
         </button>
+      )}
+    </div>
+  )
+}
+
+function NowPlayingBar() {
+  const { nowPlaying, musicStatus } = useWebSocketContext()
+  const api = useApi()
+  const { selectedGuild } = useGuild()
+
+  const videoStream = nowPlaying[0] ?? null
+  const musicTrack = musicStatus?.is_playing || musicStatus?.is_paused ? musicStatus.current : null
+  const isPaused = !!musicStatus?.is_paused
+
+  const handlePlayPause = () => {
+    if (!selectedGuild) return
+    api.controlMusic(selectedGuild, isPaused ? 'resume' : 'pause')
+  }
+
+  if (!videoStream && !musicTrack) return null
+
+  return (
+    <div className="flex items-center gap-3 max-w-2xl w-full">
+      {videoStream && (
+        <MediaCard
+          type="video"
+          title={videoStream.title}
+          startedAt={videoStream.started_at}
+        />
+      )}
+      {videoStream && musicTrack && (
+        <div className="w-px h-8 bg-white/10 shrink-0" />
+      )}
+      {musicTrack && (
+        <MediaCard
+          type="music"
+          title={musicTrack.title}
+          thumbnail={musicTrack.thumbnail}
+          duration={musicTrack.duration}
+          isPaused={isPaused}
+          onPlayPause={handlePlayPause}
+        />
       )}
     </div>
   )
