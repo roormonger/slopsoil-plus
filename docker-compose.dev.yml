@@ -16,6 +16,9 @@ services:
       - /app/frontend
       - ./data:/app/data
       - ./soundboard:/app/soundboard
+      # Bind-mount local media directories (set paths in .env, already gitignored)
+      - ${MEDIA_MUSIC:-/dev/null}:/media/music:ro
+      - ${MEDIA_VIDEO:-/dev/null}:/media/video:ro
 
   frontend:
     image: node:22-alpine

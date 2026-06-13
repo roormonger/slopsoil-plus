@@ -121,6 +121,20 @@ export interface IptvChannel {
   logo_url: string | null
 }
 
+export interface LocalSource {
+  name: string
+  path: string
+  type: string
+  scan_depth: number
+  enabled: boolean
+}
+
+export interface BrowseEntry {
+  name: string
+  type: 'file' | 'dir'
+  path: string
+}
+
 export interface Bookmark {
   id: number
   name: string

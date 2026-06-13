@@ -218,6 +218,19 @@ def init_database() -> None:
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE featured_items ADD COLUMN metadata TEXT")
 
+        # Local media sources table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS local_sources (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                path TEXT NOT NULL,
+                type TEXT NOT NULL,
+                scan_depth INTEGER NOT NULL DEFAULT 0,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                added_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # Pre-seed default settings if they don't exist
         for key, value in DEFAULT_SETTINGS.items():
             cursor.execute(
@@ -729,6 +742,58 @@ def get_tvh_enabled() -> bool:
 def set_tvh_enabled(enabled: bool) -> None:
     """Set the global tvh_enabled flag."""
     update_setting("tvh_enabled", "1" if enabled else "0")
+
+
+# ─── Local media sources ───────────────────────────────────────────────────────
+
+def get_local_sources() -> list[dict[str, Any]]:
+    """Return all local media sources."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT name, path, type, scan_depth, enabled FROM local_sources ORDER BY added_at"
+        )
+        return [
+            {
+                "name": row["name"],
+                "path": row["path"],
+                "type": row["type"],
+                "scan_depth": row["scan_depth"],
+                "enabled": bool(row["enabled"]),
+            }
+            for row in cursor.fetchall()
+        ]
+
+
+def add_local_source(
+    name: str, path: str, type_: str, scan_depth: int = 0
+) -> None:
+    """Insert a new local media source."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO local_sources (name, path, type, scan_depth) VALUES (?, ?, ?, ?)",
+            (name, path, type_, scan_depth),
+        )
+
+
+def set_local_source_enabled(name: str, enabled: bool) -> bool:
+    """Toggle enabled state for a source. Returns True if the row was found."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE local_sources SET enabled = ? WHERE name = ?",
+            (1 if enabled else 0, name),
+        )
+        return cursor.rowcount > 0
+
+
+def delete_local_source(name: str) -> bool:
+    """Delete a local source by name. Returns True if it existed."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM local_sources WHERE name = ?", (name,))
+        return cursor.rowcount > 0
 
 
 # Initialize on module import

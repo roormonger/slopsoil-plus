@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Loader2, Eye, EyeOff, Lock, Zap, Star, LayoutDashboard, Settings2, Database, Radio, Plus, Upload, Trash2, Music } from 'lucide-react'
-import type { BotStatus, IptvSource } from '../types'
+import type { BotStatus, IptvSource, LocalSource, BrowseEntry } from '../types'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useApi } from '../hooks/useApi'
@@ -130,6 +130,20 @@ export function Settings() {
   const [dragOver, setDragOver] = useState(false)
   const [modalDragOver, setModalDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Local Sources state
+  const [localSources, setLocalSources] = useState<LocalSource[]>([])
+  const [showLocalModal, setShowLocalModal] = useState(false)
+  const [newLocalName, setNewLocalName] = useState('')
+  const [newLocalPath, setNewLocalPath] = useState('')
+  const [newLocalType, setNewLocalType] = useState<'music' | 'video'>('music')
+  const [newLocalScanDepth, setNewLocalScanDepth] = useState(0)
+  const [localNameError, setLocalNameError] = useState('')
+  const [localPathError, setLocalPathError] = useState('')
+  const [showFolderBrowser, setShowFolderBrowser] = useState(false)
+  const [browsePath, setBrowsePath] = useState('/media')
+  const [browseEntries, setBrowseEntries] = useState<BrowseEntry[]>([])
+  const [browseLoading, setBrowseLoading] = useState(false)
 
   const isEnvControlled = (key: keyof Config): boolean => {
     const result = settingsEnv[key as string]?.from_env ?? false
@@ -296,6 +310,87 @@ export function Settings() {
     setAddingSource(false)
   }
 
+  // Local Sources handlers
+  const loadLocalSources = async () => {
+    const data = await api.fetchLocalSources()
+    if (data) setLocalSources(data)
+  }
+
+  const openLocalModal = () => {
+    setShowLocalModal(true)
+    setNewLocalName('')
+    setNewLocalPath('')
+    setNewLocalType('music')
+    setNewLocalScanDepth(0)
+    setLocalNameError('')
+    setLocalPathError('')
+  }
+
+  const openFolderBrowser = async () => {
+    setShowFolderBrowser(true)
+    setBrowsePath('/media')
+    setBrowseLoading(true)
+    const data = await api.browseLocalPath('/media')
+    if (data) setBrowseEntries(data.entries)
+    setBrowseLoading(false)
+  }
+
+  const navigateBrowse = async (path: string) => {
+    setBrowsePath(path)
+    setBrowseLoading(true)
+    const data = await api.browseLocalPath(path)
+    if (data) setBrowseEntries(data.entries)
+    setBrowseLoading(false)
+  }
+
+  const selectBrowsePath = (path: string) => {
+    setNewLocalPath(path)
+    setShowFolderBrowser(false)
+  }
+
+  const handleAddLocalSource = async () => {
+    let hasError = false
+    if (!newLocalName.trim()) {
+      setLocalNameError('Name is required')
+      hasError = true
+    } else if (localSources.some(s => s.name.toLowerCase() === newLocalName.trim().toLowerCase())) {
+      setLocalNameError('A source with this name already exists')
+      hasError = true
+    }
+    if (!newLocalPath.trim()) {
+      setLocalPathError('Path is required')
+      hasError = true
+    }
+    if (hasError) return
+
+    setAddingSource(true)
+    const success = await api.addLocalSource(
+      newLocalName.trim(),
+      newLocalPath.trim(),
+      newLocalType,
+      newLocalType === 'video' ? newLocalScanDepth : 0
+    )
+    if (success) {
+      setShowLocalModal(false)
+      setNewLocalName('')
+      setNewLocalPath('')
+      await loadLocalSources()
+    }
+    setAddingSource(false)
+  }
+
+  const handleDeleteLocalSource = async (name: string) => {
+    const success = await api.deleteLocalSource(name)
+    if (success) await loadLocalSources()
+  }
+
+  const handleToggleLocalSource = async (name: string) => {
+    const source = localSources.find(s => s.name === name)
+    if (!source) return
+    const success = await api.toggleLocalSource(name, !source.enabled)
+    if (success) await loadLocalSources()
+  }
+
   useEffect(() => {
     const loadData = async () => {
       const [data, status] = await Promise.all([api.fetchConfig(), api.fetchStatus()])
@@ -310,6 +405,7 @@ export function Settings() {
       const fs = await api.fetchFeaturedSettings()
       if (fs) setFeaturedSettings(fs)
       await loadIptvSources()
+      await loadLocalSources()
       setLoading(false)
     }
     loadData()
@@ -862,12 +958,59 @@ export function Settings() {
 
             {/* Local Sources */}
             <div className="glass-card rounded-2xl p-6 space-y-4 h-[380px] flex flex-col">
-              <div className="shrink-0">
-                <h3 className="text-xl font-semibold text-slate-200 mb-1">Local Sources</h3>
-                <p className="text-sm text-slate-400">Local media directories</p>
+              <div className="flex items-center justify-between shrink-0">
+                <div>
+                  <h3 className="text-xl font-semibold text-slate-200 mb-1">Local Sources</h3>
+                  <p className="text-sm text-slate-400">{localSources.length} source{localSources.length !== 1 ? 's' : ''}</p>
+                </div>
+                <Button onClick={openLocalModal} className="bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30">
+                  <Plus className="h-4 w-4" />
+                </Button>
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto flex items-center justify-center">
-                <p className="text-slate-500 text-sm">Coming soon</p>
+
+              <div className="space-y-2 overflow-y-auto min-h-0">
+                {localSources.length === 0 ? (
+                  <div className="text-center py-8 border border-dashed border-white/10 rounded-xl">
+                    <Database className="h-8 w-8 text-slate-500 mx-auto mb-2" />
+                    <p className="text-slate-400">No local sources added yet</p>
+                    <p className="text-xs text-slate-500 mt-1">Click + to add a local media directory</p>
+                  </div>
+                ) : (
+                  localSources.map((source) => (
+                    <div
+                      key={source.name}
+                      className="flex items-center justify-between p-3 rounded-xl glass-light border-white/5"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-2 h-2 rounded-full shrink-0 ${source.enabled ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-200 truncate">{source.name}</p>
+                          <p className="text-xs text-slate-500 truncate">{source.path}</p>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${source.type === 'music' ? 'bg-violet-500/20 text-violet-300' : 'bg-blue-500/20 text-blue-300'}`}>
+                            {source.type === 'music' ? 'Music' : 'Video'}
+                            {source.type === 'video' && source.scan_depth > 0 && ` · depth ${source.scan_depth}`}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => handleToggleLocalSource(source.name)}
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${source.enabled ? 'bg-primary' : 'bg-slate-700'}`}
+                        >
+                          <span
+                            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${source.enabled ? 'translate-x-5' : 'translate-x-1'}`}
+                          />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteLocalSource(source.name)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -967,6 +1110,194 @@ export function Settings() {
                     className="flex-1 bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30"
                   >
                     {addingSource ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Add Local Source Modal */}
+          {showLocalModal && (
+            <div
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
+              onClick={() => setShowLocalModal(false)}
+            >
+              <div
+                className="glass-card rounded-2xl p-6 w-full max-w-md space-y-4 m-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-xl font-semibold text-slate-200">Add Local Source</h3>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-400">Source Name</label>
+                  <Input
+                    value={newLocalName}
+                    onChange={(e) => {
+                      setNewLocalName(e.target.value)
+                      setLocalNameError('')
+                    }}
+                    placeholder="e.g., My Music"
+                    className="glass-input text-slate-200"
+                  />
+                  {localNameError && <p className="text-sm text-red-400">{localNameError}</p>}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-400">Directory Path</label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newLocalPath}
+                      onChange={(e) => {
+                        setNewLocalPath(e.target.value)
+                        setLocalPathError('')
+                      }}
+                      placeholder="/media/music"
+                      className="glass-input text-slate-200 flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={openFolderBrowser}
+                      className="glass-light border-white/10 text-slate-300 hover:bg-white/10 shrink-0"
+                    >
+                      Browse
+                    </Button>
+                  </div>
+                  {localPathError && <p className="text-sm text-red-400">{localPathError}</p>}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-400">Media Type</label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setNewLocalType('music')}
+                      className={`flex-1 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                        newLocalType === 'music'
+                          ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
+                          : 'glass-light border-white/10 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Music
+                    </button>
+                    <button
+                      onClick={() => setNewLocalType('video')}
+                      className={`flex-1 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                        newLocalType === 'video'
+                          ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                          : 'glass-light border-white/10 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Video
+                    </button>
+                  </div>
+                </div>
+                {newLocalType === 'video' && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-400">Scan Depth</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={5}
+                      value={newLocalScanDepth}
+                      onChange={(e) => setNewLocalScanDepth(parseInt(e.target.value) || 0)}
+                      className="glass-input text-slate-200"
+                    />
+                    <p className="text-xs text-slate-500">How many subfolder levels to scan for video files (0 = root only)</p>
+                  </div>
+                )}
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowLocalModal(false)}
+                    className="flex-1 glass-light border-white/10 text-slate-300 hover:bg-white/10"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleAddLocalSource}
+                    disabled={addingSource}
+                    className="flex-1 bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30"
+                  >
+                    {addingSource ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Folder Browser Modal */}
+          {showFolderBrowser && (
+            <div
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60]"
+              onClick={() => setShowFolderBrowser(false)}
+            >
+              <div
+                className="glass-card rounded-2xl p-6 w-full max-w-md space-y-3 m-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-lg font-semibold text-slate-200">Select Folder</h3>
+                <div className="flex items-center gap-2 text-sm text-slate-400 pb-2 border-b border-white/10">
+                  <button
+                    onClick={() => navigateBrowse('/media')}
+                    className="hover:text-slate-200 transition-colors"
+                  >
+                    /media
+                  </button>
+                  {browsePath !== '/media' && (
+                    <>
+                      <span className="text-slate-600">/</span>
+                      <span className="truncate">{browsePath.replace('/media/', '')}</span>
+                    </>
+                  )}
+                </div>
+                <div className="max-h-64 overflow-y-auto space-y-1">
+                  {browseLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    </div>
+                  ) : browseEntries.length === 0 ? (
+                    <p className="text-slate-500 text-sm text-center py-4">No folders found</p>
+                  ) : (
+                    browseEntries.map((entry) => (
+                      <div
+                        key={entry.path}
+                        className="flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors"
+                      >
+                        <button
+                          onClick={() => entry.type === 'dir' && navigateBrowse(entry.path)}
+                          className="flex items-center gap-2 text-sm text-slate-300 flex-1 text-left min-w-0"
+                        >
+                          {entry.type === 'dir' ? (
+                            <Database className="h-4 w-4 text-slate-500 shrink-0" />
+                          ) : (
+                            <span className="w-4 h-4 shrink-0" />
+                          )}
+                          <span className="truncate">{entry.name}</span>
+                        </button>
+                        {entry.type === 'dir' && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => selectBrowsePath(entry.path)}
+                            className="text-primary hover:text-primary hover:bg-primary/10 shrink-0 h-7 text-xs"
+                          >
+                            Select
+                          </Button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowFolderBrowser(false)}
+                    className="flex-1 glass-light border-white/10 text-slate-300 hover:bg-white/10"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => selectBrowsePath(browsePath)}
+                    className="flex-1 bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30"
+                  >
+                    Select Current
                   </Button>
                 </div>
               </div>

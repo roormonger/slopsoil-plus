@@ -28,6 +28,7 @@ from backend.routes.bookmarks import router as bookmarks_router
 from backend.routes.jellyfin import router as jellyfin_router
 from backend.routes.soundboard import router as soundboard_router
 from backend.routes.featured import router as featured_router
+from backend.routes.local import router as local_router
 
 # Main router that aggregates all domain routers
 router = APIRouter()
@@ -45,5 +46,6 @@ router.include_router(bookmarks_router, prefix="/api")
 router.include_router(jellyfin_router, prefix="/api")
 router.include_router(soundboard_router, prefix="/api")
 router.include_router(featured_router, prefix="/api")
+router.include_router(local_router, prefix="/api")
 
 __all__ = ["router"]

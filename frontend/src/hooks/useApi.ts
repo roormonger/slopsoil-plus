@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import type { Config, User, BotStatus, NowPlaying, IptvSource, IptvChannel, Bookmark, Sound, Guild, VoiceChannel, VoiceStatus, CommandResult, MusicStatus, FeaturedItem, TrackMeta } from '../types'
+import type { Config, User, BotStatus, NowPlaying, IptvSource, IptvChannel, Bookmark, Sound, Guild, VoiceChannel, VoiceStatus, CommandResult, MusicStatus, FeaturedItem, TrackMeta, LocalSource, BrowseEntry } from '../types'
 
 const API_URL = '/api'
 
@@ -505,6 +505,72 @@ export function useApi() {
     } catch (err) {
       showMessage(err instanceof Error ? err.message : 'Failed to fetch tracks')
       return null
+    }
+  }, [showMessage])
+
+  // Local media source API methods
+  const fetchLocalSources = useCallback(async (): Promise<LocalSource[] | null> => {
+    try {
+      const res = await fetch(`${API_URL}/local/sources`)
+      if (!res.ok) throw new Error('Failed to fetch local sources')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to load local sources')
+      return null
+    }
+  }, [showMessage])
+
+  const browseLocalPath = useCallback(async (path: string): Promise<{ entries: BrowseEntry[] } | null> => {
+    try {
+      const res = await fetch(`${API_URL}/local/browse?path=${encodeURIComponent(path)}`)
+      if (!res.ok) throw new Error('Failed to browse directory')
+      return await res.json()
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to browse directory')
+      return null
+    }
+  }, [showMessage])
+
+  const addLocalSource = useCallback(async (name: string, path: string, type: string, scanDepth: number): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_URL}/local/sources`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, path, type, scan_depth: scanDepth }),
+      })
+      if (!res.ok) throw new Error('Failed to add local source')
+      showMessage('Local source added successfully', 'success')
+      return true
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to add local source')
+      return false
+    }
+  }, [showMessage])
+
+  const deleteLocalSource = useCallback(async (name: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_URL}/local/sources/${encodeURIComponent(name)}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete local source')
+      showMessage('Local source deleted successfully', 'success')
+      return true
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to delete local source')
+      return false
+    }
+  }, [showMessage])
+
+  const toggleLocalSource = useCallback(async (name: string, enabled: boolean): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_URL}/local/sources/${encodeURIComponent(name)}/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      })
+      if (!res.ok) throw new Error('Failed to toggle local source')
+      return true
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : 'Failed to toggle local source')
+      return false
     }
   }, [showMessage])
 
@@ -1063,5 +1129,10 @@ export function useApi() {
     fetchJellyfinMusicArtists,
     fetchJellyfinMusicAlbums,
     fetchJellyfinMusicTracks,
+    fetchLocalSources,
+    browseLocalPath,
+    addLocalSource,
+    deleteLocalSource,
+    toggleLocalSource,
   }
 }
