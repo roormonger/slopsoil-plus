@@ -361,8 +361,6 @@ def rewrite_sps_vui(nal: bytes) -> bytes:
 class _EncoderConfig:
     name: str
     pre_input: list[str]  # args before -i
-    post_codec: list[str]  # args after -c:v <name>
-    vf: str  # -vf value
 
 
 def _test_encoder(name: str, pre_input: list[str]) -> bool:
@@ -401,28 +399,125 @@ _STREAM_QUALITY_PRESETS: dict[str, tuple[str, int, str, str]] = {
     "4k": ("3840:2160", 60, "20000k", "40000k"),
 }
 
-_STREAM_QUALITY: str = os.getenv("STREAM_QUALITY", "1080p").lower()
-if _STREAM_QUALITY not in _STREAM_QUALITY_PRESETS:
-    log.warning("unknown STREAM_QUALITY=%r, using 1080p", _STREAM_QUALITY)
-    _STREAM_QUALITY = "1080p"
 
-# Per-axis env overrides take precedence over the preset
-_RESOLUTION: str = os.getenv("STREAM_RESOLUTION", _STREAM_QUALITY_PRESETS[_STREAM_QUALITY][0])
-_FPS: int = int(os.getenv("STREAM_FPS", str(_STREAM_QUALITY_PRESETS[_STREAM_QUALITY][1])))
-_BITRATE: str = os.getenv("STREAM_VIDEO_BITRATE", _STREAM_QUALITY_PRESETS[_STREAM_QUALITY][2])
-_BUF_SIZE: str = os.getenv("STREAM_BUF_SIZE", _STREAM_QUALITY_PRESETS[_STREAM_QUALITY][3])
+def _get_stream_settings() -> dict[str, str | int | float]:
+    """Read stream quality settings from DB (with env fallback)."""
+    try:
+        from backend.database import get_setting_with_env_fallback
+
+        quality, _ = get_setting_with_env_fallback("stream_quality")
+        resolution, _ = get_setting_with_env_fallback("stream_resolution")
+        fps_str, _ = get_setting_with_env_fallback("stream_fps")
+        bitrate, _ = get_setting_with_env_fallback("stream_video_bitrate")
+        buf_size, _ = get_setting_with_env_fallback("stream_buf_size")
+        pace_str, _ = get_setting_with_env_fallback("stream_packet_pace")
+        sync_str, _ = get_setting_with_env_fallback("stream_av_sync_ms")
+    except Exception:
+        quality = ""
+        resolution = ""
+        fps_str = ""
+        bitrate = ""
+        buf_size = ""
+        pace_str = ""
+        sync_str = ""
+
+    # Fallback to env vars / defaults if DB returned empty
+    quality = quality or os.getenv("STREAM_QUALITY", "1080p").lower()
+    if quality not in _STREAM_QUALITY_PRESETS:
+        quality = "1080p"
+
+    default = _STREAM_QUALITY_PRESETS[quality]
+    resolution = resolution or os.getenv("STREAM_RESOLUTION", default[0])
+    fps = int(fps_str) if fps_str else int(os.getenv("STREAM_FPS", str(default[1])))
+    bitrate = bitrate or os.getenv("STREAM_VIDEO_BITRATE", default[2])
+    buf_size = buf_size or os.getenv("STREAM_BUF_SIZE", default[3])
+    packet_pace = float(pace_str) if pace_str else float(os.getenv("STREAM_PACKET_PACE", "0.0"))
+    av_sync_ms = int(sync_str) if sync_str else int(os.getenv("STREAM_AV_SYNC_MS", "0"))
+
+    return {
+        "quality": quality,
+        "resolution": resolution,
+        "fps": fps,
+        "bitrate": bitrate,
+        "buf_size": buf_size,
+        "packet_pace": max(0.0, min(0.95, packet_pace)),
+        "av_sync_ms": max(-5000, min(5000, av_sync_ms)),
+    }
+
+
+# Module-level defaults (for startup logging / encoder probing)
+_default_settings = _get_stream_settings()
+_STREAM_QUALITY: str = str(_default_settings["quality"])
+_RESOLUTION: str = str(_default_settings["resolution"])
+_FPS: int = int(_default_settings["fps"])
+_BITRATE: str = str(_default_settings["bitrate"])
+_BUF_SIZE: str = str(_default_settings["buf_size"])
+_PACKET_PACE: float = float(_default_settings["packet_pace"])
+_AV_SYNC_MS: int = int(_default_settings["av_sync_ms"])
 
 log.info("stream quality: %s (%s @ %dfps, %s CBR)", _STREAM_QUALITY, _RESOLUTION, _FPS, _BITRATE)
-
-# RTP packet pacing: space packets across this fraction of the frame interval (0.0 = off)
-_PACKET_PACE: float = max(0.0, min(0.95, float(os.getenv("STREAM_PACKET_PACE", "0.0"))))
 if _PACKET_PACE > 0:
     log.info("RTP packet pacing: %.2f%% of frame interval", _PACKET_PACE * 100)
-
-# A/V sync offset in ms (positive = audio ahead, negative = audio behind)
-_AV_SYNC_MS: int = max(-5000, min(5000, int(os.getenv("STREAM_AV_SYNC_MS", "0"))))
 if _AV_SYNC_MS != 0:
     log.info("A/V sync offset: %+d ms (audio %s)", _AV_SYNC_MS, "ahead" if _AV_SYNC_MS > 0 else "behind")
+
+
+def _build_encoder_args(
+    name: str, resolution: str, fps: int, bitrate: str, buf_size: str
+) -> tuple[list[str], str]:
+    """Return (post_codec, vf) for the given encoder and quality settings."""
+    if name == "libx264":
+        return (
+            [
+                "-preset", "ultrafast",
+                "-tune", "zerolatency",
+                "-profile:v", "high",
+                "-level:v", "4.2",
+                "-x264-params", f"aud=1:fps={fps}",
+                "-b:v", bitrate,
+                "-maxrate", bitrate,
+                "-bufsize", buf_size,
+            ],
+            f"scale={resolution}",
+        )
+    if name == "h264_nvenc":
+        return (
+            [
+                "-preset", "p1",
+                "-tune", "ll",
+                "-profile:v", "high",
+                "-level:v", "4.2",
+                "-rc", "cbr",
+                "-aud", "1",
+                "-b:v", bitrate,
+                "-maxrate", bitrate,
+                "-bufsize", buf_size,
+            ],
+            f"scale={resolution}",
+        )
+    if name == "h264_vaapi":
+        return (
+            [
+                "-rc_mode", "CBR",
+                "-profile:v", "high",
+                "-level", "42",
+                "-aud", "1",
+                "-b:v", bitrate,
+            ],
+            f"format=nv12,hwupload,scale_vaapi={resolution}",
+        )
+    if name == "libopenh264":
+        return (
+            [
+                "-profile:v", "constrained_baseline",
+                "-level:v", "4.2",
+                "-b:v", bitrate,
+                "-maxrate", bitrate,
+                "-bufsize", buf_size,
+            ],
+            f"scale={resolution}",
+        )
+    raise ValueError(f"unknown encoder {name}")
 
 
 def _detect_encoder() -> _EncoderConfig | None:
@@ -445,78 +540,16 @@ def _detect_encoder() -> _EncoderConfig | None:
 
     if "libx264" in available and _test_encoder("libx264", []):
         log.info("video encoder: libx264 (software)")
-        return _EncoderConfig(
-            name="libx264",
-            pre_input=[],
-            post_codec=[
-                "-preset",
-                "ultrafast",
-                "-tune",
-                "zerolatency",
-                "-profile:v",
-                "high",
-                "-level:v",
-                "4.2",
-                "-x264-params",
-                f"aud=1:fps={_FPS}",
-                "-b:v",
-                _BITRATE,
-                "-maxrate",
-                _BITRATE,
-                "-bufsize",
-                _BUF_SIZE,
-            ],
-            vf=f"scale={_RESOLUTION}",
-        )
+        return _EncoderConfig(name="libx264", pre_input=[])
 
     if "h264_nvenc" in available and _test_encoder("h264_nvenc", []):
         log.info("video encoder: h264_nvenc (NVIDIA)")
-        return _EncoderConfig(
-            name="h264_nvenc",
-            pre_input=[],
-            post_codec=[
-                "-preset",
-                "p1",
-                "-tune",
-                "ll",
-                "-profile:v",
-                "high",
-                "-level:v",
-                "4.2",
-                "-rc",
-                "cbr",
-                "-aud",
-                "1",
-                "-b:v",
-                _BITRATE,
-                "-maxrate",
-                _BITRATE,
-                "-bufsize",
-                _BUF_SIZE,
-            ],
-            vf=f"scale={_RESOLUTION}",
-        )
+        return _EncoderConfig(name="h264_nvenc", pre_input=[])
 
     if "h264_vaapi" in available:
         if _test_encoder("h264_vaapi", vaapi_pre):
             log.info("video encoder: h264_vaapi (VA-API hardware)")
-            return _EncoderConfig(
-                name="h264_vaapi",
-                pre_input=vaapi_pre,
-                post_codec=[
-                    "-rc_mode",
-                    "CBR",
-                    "-profile:v",
-                    "high",
-                    "-level",
-                    "42",
-                    "-aud",
-                    "1",
-                    "-b:v",
-                    _BITRATE,
-                ],
-                vf=f"format=nv12,hwupload,scale_vaapi={_RESOLUTION}",
-            )
+            return _EncoderConfig(name="h264_vaapi", pre_input=vaapi_pre)
         else:
             log.warning(
                 "h264_vaapi is compiled in but the VA-API probe failed — falling back to "
@@ -527,23 +560,7 @@ def _detect_encoder() -> _EncoderConfig | None:
 
     if "libopenh264" in available and _test_encoder("libopenh264", []):
         log.info("video encoder: libopenh264 (software)")
-        return _EncoderConfig(
-            name="libopenh264",
-            pre_input=[],
-            post_codec=[
-                "-profile:v",
-                "constrained_baseline",
-                "-level:v",
-                "4.2",
-                "-b:v",
-                _BITRATE,
-                "-maxrate",
-                _BITRATE,
-                "-bufsize",
-                _BUF_SIZE,
-            ],
-            vf=f"scale={_RESOLUTION}",
-        )
+        return _EncoderConfig(name="libopenh264", pre_input=[])
 
     log.warning(
         "no working H.264 encoder found — video streaming disabled. "
@@ -703,15 +720,22 @@ class H264VideoPlayer(threading.Thread):
         self,
         url: str,
         voice_client: discord.VoiceClient,
-        fps: float = 25.0,
+        fps: float | None = None,
         live: bool | None = True,
         audio: bool = True,
         probe_size: int = 2_000_000,
     ) -> None:
         super().__init__(name="H264VideoPlayer", daemon=True)
+
+        settings = _get_stream_settings()
         self._url = url
         self._vc = voice_client
-        self._fps = fps
+        self._fps = fps if fps is not None else settings["fps"]
+        self._resolution = settings["resolution"]
+        self._bitrate = settings["bitrate"]
+        self._buf_size = settings["buf_size"]
+        self._packet_pace = settings["packet_pace"]
+        self._av_sync_ms = settings["av_sync_ms"]
         self._end = threading.Event()
         self._proc: subprocess.Popen | None = None
 
@@ -720,7 +744,7 @@ class H264VideoPlayer(threading.Thread):
         self._probe_size = probe_size
         self._seq: int = 0
         self._ts: int = 0
-        self._ts_inc: int = round(_CLOCK / fps)
+        self._ts_inc: int = round(_CLOCK / self._fps)
         self._ssrc: int = voice_client.ssrc + 1  # VIDEO_SSRC_OFFSET = 1
         self._packets_sent: int = 0
         self._nonce: list[int] = [_VIDEO_NONCE_BASE]  # mutable for _encrypt()
@@ -803,11 +827,14 @@ class H264VideoPlayer(threading.Thread):
             if self._url.startswith(("http://", "https://", "rtmp://", "rtsp://"))
             else []
         )
+        post_codec, vf = _build_encoder_args(
+            enc.name, self._resolution, int(self._fps), self._bitrate, self._buf_size
+        )
         video_out_args = [
             "-map", "0:v:0",
-            "-vf", enc.vf,
+            "-vf", vf,
             "-c:v", enc.name,
-            *enc.post_codec,
+            *post_codec,
             "-r", str(int(self._fps)),
             "-g", str(int(self._fps)),
             "-f", "h264",
@@ -845,8 +872,8 @@ class H264VideoPlayer(threading.Thread):
             ),
             # A/V sync offset: positive advances audio (fixes "audio behind")
             *(
-                ["-itsoffset", f"{_AV_SYNC_MS / 1000.0:.3f}"]
-                if _AV_SYNC_MS != 0
+                ["-itsoffset", f"{self._av_sync_ms / 1000.0:.3f}"]
+                if self._av_sync_ms != 0
                 else []
             ),
             "-map",
@@ -910,9 +937,9 @@ class H264VideoPlayer(threading.Thread):
             return
 
         # RTP packet pacing: spread packets across a fraction of the frame interval
-        if _PACKET_PACE > 0 and len(all_payloads) > 1:
-            frame_interval = 1.0 / _FPS
-            pace_interval = (frame_interval * _PACKET_PACE) / (len(all_payloads) - 1)
+        if self._packet_pace > 0 and len(all_payloads) > 1:
+            frame_interval = 1.0 / self._fps
+            pace_interval = (frame_interval * self._packet_pace) / (len(all_payloads) - 1)
         else:
             pace_interval = 0.0
 
